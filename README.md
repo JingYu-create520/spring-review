@@ -94,6 +94,19 @@ Findings land as check-run annotations, i.e. inline comments on the diff, with n
 API token and no comment threads to de-duplicate. Set `fail-on-error: false` to
 annotate without blocking.
 
+**2b · GitHub Code Scanning** — `--format sarif` emits SARIF 2.1.0 with all 11 rule
+descriptions embedded, so findings become persistent alerts on the Security tab
+instead of annotations that scroll away:
+
+```yaml
+- run: spring-review --diff origin/main..HEAD --format sarif > spring-review.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with: { sarif_file: spring-review.sarif, category: spring-review }
+```
+
+This repo does exactly that against `tests/fixtures` on every push to `main`, so
+you can see live alerts before trusting it on your own code.
+
 **3 · MCP server, for your coding agent**
 
 ```json

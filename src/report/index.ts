@@ -1,6 +1,6 @@
 import type { Finding, ReviewResult } from "../types.js";
 
-export type ReportFormat = "table" | "json" | "github";
+export type ReportFormat = "table" | "json" | "github" | "sarif";
 
 export interface ReportOptions {
   color: boolean;
@@ -159,6 +159,64 @@ export function renderGithub(result: ReviewResult): string {
 
 function escapeData(text: string): string {
   return escapeMessage(text).replace(/:/g, "%3A").replace(/ /g, "%20");
+}
+
+/**
+ * SARIF 2.1.0 — the format GitHub Code Scanning ingests, so findings become
+ * security alerts on the Security tab instead of transient annotations.
+ *
+ * Rule descriptors come from the rule catalogue, which means `--format sarif`
+ * doubles as documentation: a reader on the Security tab sees *why* a pattern is
+ * wrong without leaving GitHub.
+ */
+export function renderSarif(
+  result: ReviewResult,
+  rules: Array<{ id: string; title: string; titleEn: string; severity: string; rationale: string }>,
+  toolVersion: string,
+): string {
+  const level = (s: Finding["severity"]) => (s === "error" ? "error" : s === "warn" ? "warning" : "note");
+  const ruleIndex = new Map(rules.map((r, i) => [r.id, i]));
+
+  const sarif = {
+    $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+    version: "2.1.0",
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: "spring-review",
+            version: toolVersion,
+            informationUri: "https://github.com/JingYu-create520/spring-review",
+            rules: rules.map((r) => ({
+              id: r.id,
+              name: r.titleEn,
+              shortDescription: { text: r.titleEn },
+              fullDescription: { text: `${r.title} — ${r.rationale}` },
+              defaultConfiguration: { level: level(r.severity as Finding["severity"]) },
+              properties: { tags: ["spring", "mybatis", "correctness"] },
+            })),
+          },
+        },
+        results: result.findings.map((f) => ({
+          ruleId: f.rule,
+          ruleIndex: ruleIndex.get(f.rule) ?? 0,
+          level: level(f.severity),
+          message: {
+            text: f.suggestion ? `${f.message}\n${f.suggestion}` : f.message,
+          },
+          locations: [
+            {
+              physicalLocation: {
+                artifactLocation: { uri: f.file, uriBaseId: "%SRCROOT%" },
+                region: { startLine: f.line, startColumn: 1, snippet: { text: f.snippet } },
+              },
+            },
+          ],
+        })),
+      },
+    ],
+  };
+  return `${JSON.stringify(sarif, null, 2)}\n`;
 }
 
 function escapeMessage(text: string): string {

@@ -87,6 +87,18 @@ jobs:
 发现以 check-run annotations 的形式出现在 Files changed 的行上——不需要仓库 token、
 不会刷屏、不用维护评论去重状态。想让 CI 只提示不卡门禁就设 `fail-on-error: false`。
 
+**2b · GitHub Code Scanning** —— `--format sarif` 输出 SARIF 2.1.0，11 条规则的说明
+一起打包进去，于是发现会变成 Security 标签页上**长期存在的告警**，而不是一闪而过的注释：
+
+```yaml
+- run: spring-review --diff origin/main..HEAD --format sarif > spring-review.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with: { sarif_file: spring-review.sarif, category: spring-review }
+```
+
+本仓库每次推 main 就会拿 `tests/fixtures` 这么跑一遍，你可以先在别人的 Security 页上
+看到真实效果，再决定要不要装进自己项目。
+
 **3 · MCP server:让编码 Agent 自己审自己**
 
 ```json

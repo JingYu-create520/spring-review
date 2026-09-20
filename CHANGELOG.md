@@ -30,7 +30,8 @@ First public version: the rule engine plus four ways to consume it.
   masked copy) and a MyBatis mapper XML reader.
 - CLI (`spring-review`), MCP server (`review_diff` / `review_file` / `list_rules`),
   Agent Skill, and a composite GitHub Action using check-run annotations.
-- Reports: `table` (colour), `json`, `github`.
+- Reports: `table` (colour), `json`, `github` (workflow annotations), `sarif`
+  (SARIF 2.1.0 for GitHub Code Scanning, with all rule descriptions embedded).
 - Optional prose polish via `--llm` against any OpenAI-compatible endpoint
   (`SR_LLM_BASE_URL` / `SR_LLM_API_KEY` / `SR_LLM_MODEL`); findings are identical
   with it on or off, which is asserted by tests.

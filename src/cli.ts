@@ -5,11 +5,11 @@ import { reviewDiff, reviewPaths } from "./index.js";
 import { listRules, rules as allRules } from "./rules/index.js";
 import { loadConfig, mergeOptions } from "./config.js";
 import { MockProvider, providerFromEnv } from "./llm/provider.js";
-import { renderGithub, renderJson, renderTerminal, type ReportFormat } from "./report/index.js";
+import { renderGithub, renderJson, renderSarif, renderTerminal, type ReportFormat } from "./report/index.js";
 import type { Severity } from "./types.js";
 import { PACKAGE_VERSION } from "./version.js";
 
-const FORMATS = new Set<ReportFormat>(["table", "json", "github"]);
+const FORMATS = new Set<ReportFormat>(["table", "json", "github", "sarif"]);
 
 export interface CliIo {
   stdout?: (chunk: string) => void;
@@ -53,7 +53,7 @@ export async function main(argv: string[], io: CliIo = {}): Promise<number> {
     .option("--staged", "review staged changes (git diff --cached)")
     .option("--patch <file>", "read a unified diff from a file instead of git")
     .option("--file <path...>", "review whole files (every line reportable)")
-    .option("--format <fmt>", "table | json | github", "table")
+    .option("--format <fmt>", "table | json | github | sarif", "table")
     .option("--min-severity <sev>", "error | warn | info (default warn)")
     .option("--exclude <glob...>", "paths to skip, e.g. '**/generated/**'")
     .option("--disable <rule...>", "turn rules off by id")
@@ -94,7 +94,7 @@ export async function main(argv: string[], io: CliIo = {}): Promise<number> {
 
   const format = String(opts["format"] ?? "table") as ReportFormat;
   if (!FORMATS.has(format)) {
-    fail(`spring-review: unknown --format "${format}" (expected table | json | github)\n`);
+    fail(`spring-review: unknown --format "${format}" (expected table | json | github | sarif)\n`);
     return 2;
   }
 
@@ -168,6 +168,20 @@ export async function main(argv: string[], io: CliIo = {}): Promise<number> {
 
   if (format === "json") write(renderJson(result));
   else if (format === "github") write(renderGithub(result));
+  else if (format === "sarif")
+    write(
+      renderSarif(
+        result,
+        allRules.map((r) => ({
+          id: r.id,
+          title: r.title,
+          titleEn: r.titleEn,
+          severity: r.severity,
+          rationale: r.rationale,
+        })),
+        PACKAGE_VERSION,
+      ),
+    );
   else {
     write(
       renderTerminal(result, {

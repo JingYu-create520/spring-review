@@ -33,7 +33,7 @@ spring-review --diff HEAD~1..HEAD --format json
 
 Flags worth knowing: `--min-severity error|warn|info` (default `warn`),
 `--experimental` (adds SPR005), `--exclude "**/generated/**"`, `--disable SPR005`,
-`--format table|json|github`. Exit code: `0` nothing blocking, `1` at least one
+`--format table|json|github|sarif`. Exit code: `0` nothing blocking, `1` at least one
 error-severity finding, `2` the tool could not run.
 
 ## How to read the output

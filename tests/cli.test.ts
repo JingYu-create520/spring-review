@@ -7,7 +7,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { main } from "../src/cli.js";
 import { listRules } from "../src/rules/index.js";
-import { renderGithub, renderJson, renderTerminal } from "../src/report/index.js";
+import { renderGithub, renderJson, renderSarif, renderTerminal } from "../src/report/index.js";
+import { rules } from "../src/rules/index.js";
 import { PACKAGE_VERSION } from "../src/version.js";
 import type { ReviewResult } from "../src/types.js";
 
@@ -199,5 +200,57 @@ describe("report renderers", () => {
       { color: false },
     );
     expect(clean).toContain("no findings");
+  });
+
+  it("sarif format is ingestable by GitHub code scanning", () => {
+    const catalogue = rules.map((r) => ({
+      id: r.id,
+      title: r.title,
+      titleEn: r.titleEn,
+      severity: r.severity,
+      rationale: r.rationale,
+    }));
+    const sarif = JSON.parse(renderSarif(sample, catalogue, "0.1.0")) as {
+      version: string;
+      runs: Array<{
+        tool: { driver: { name: string; rules: Array<{ id: string; fullDescription: { text: string }; defaultConfiguration: { level: string } }> } };
+        results: Array<{
+          ruleId: string;
+          ruleIndex: number;
+          level: string;
+          message: { text: string };
+          locations: Array<{ physicalLocation: { artifactLocation: { uri: string }; region: { startLine: number } } }>;
+        }>;
+      }>;
+    };
+
+    expect(sarif.version).toBe("2.1.0");
+    const run = sarif.runs[0]!;
+    expect(run.tool.driver.name).toBe("spring-review");
+    // Every rule must be declared so the Security tab can explain itself.
+    expect(run.tool.driver.rules).toHaveLength(11);
+    expect(run.tool.driver.rules.every((r) => r.fullDescription.text.includes("—"))).toBe(true);
+
+    const result = run.results[0]!;
+    expect(result.ruleId).toBe("MYB001");
+    expect(result.level).toBe("error"); // error → error, not "warn"
+    expect(result.ruleIndex).toBe(run.tool.driver.rules.findIndex((r) => r.id === "MYB001"));
+    expect(result.locations[0]!.physicalLocation.artifactLocation.uri).toBe("a/b/Mapper.xml");
+    expect(result.locations[0]!.physicalLocation.region.startLine).toBe(7);
+    expect(result.message.text).toContain("存在注入风险");
+  });
+
+  it("warn maps to SARIF warning and info to note", () => {
+    const catalogue = [{ id: "SPR005", title: "t", titleEn: "e", severity: "warn", rationale: "r" }];
+    const forSeverity = (severity: "warn" | "info") =>
+      JSON.parse(
+        renderSarif(
+          { ...sample, findings: [{ ...sample.findings[0]!, rule: "SPR005", severity }] },
+          catalogue,
+          "0.1.0",
+        ),
+      ).runs[0].results[0].level;
+    expect(forSeverity("warn")).toBe("warning");
+    expect(forSeverity("info")).toBe("note");
   });
 });
