@@ -108,7 +108,8 @@ jobs:
 
 Findings land as check-run annotations, i.e. inline comments on the diff, with no
 API token and no comment threads to de-duplicate. Set `fail-on-error: false` to
-annotate without blocking.
+annotate without blocking — it emits the same annotations at `notice` level, since
+a `::error` workflow command fails the job on its own no matter what the exit code is.
 
 **2b · GitHub Code Scanning** — `--format sarif` emits SARIF 2.1.0 with all 11 rule
 descriptions embedded, so findings become persistent alerts on the Security tab

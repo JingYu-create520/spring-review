@@ -100,7 +100,9 @@ jobs:
 ```
 
 发现以 check-run annotations 的形式出现在 Files changed 的行上——不需要仓库 token、
-不会刷屏、不用维护评论去重状态。想让 CI 只提示不卡门禁就设 `fail-on-error: false`。
+不会刷屏、不用维护评论去重状态。想让 CI 只提示不卡门禁就设 `fail-on-error: false`——
+它会把同样的注解降到 `notice` 级别输出，因为 `::error` 是 workflow 命令，本身就会让
+job 变红，跟退出码无关。
 
 **2b · GitHub Code Scanning** —— `--format sarif` 输出 SARIF 2.1.0，11 条规则的说明
 一起打包进去，于是发现会变成 Security 标签页上**长期存在的告警**，而不是一闪而过的注释：

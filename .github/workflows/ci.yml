@@ -94,18 +94,32 @@ jobs:
   action-self-test:
     runs-on: ubuntu-latest
     needs: build-test
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Find the commit that added the demo project
+        run: |
+          added=$(git log --reverse --format=%H --diff-filter=A -- examples/demo-project/pom.xml | head -1)
+          test -n "$added" || { echo "demo project not found in history"; exit 1; }
+          # Diffing that commit against its parent always yields planted bugs, so
+          # this job can never quietly become a no-op as the repo moves on.
+          echo "SR_DEMO_BASE=${added}^" >> "$GITHUB_ENV"
+          echo "SR_DEMO_HEAD=${added}" >> "$GITHUB_ENV"
+
       - run: npm ci && npm run build
-      - name: Review the fixture commit through action.yml
+
+      - name: Review the demo commit through action.yml (must not block)
         uses: ./
         with:
-          base: HEAD~1
-          head: HEAD
+          base: ${{ env.SR_DEMO_BASE }}
+          head: ${{ env.SR_DEMO_HEAD }}
           version: local
           fail-on-error: "false"

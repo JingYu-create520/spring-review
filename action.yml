@@ -79,16 +79,26 @@ runs:
         if [ "$SR_EXPERIMENTAL" = "true" ]; then ARGS+=(--experimental); fi
 
         if [ "$SR_VERSION" = "local" ]; then
-          node "${GITHUB_ACTION_PATH}/dist/cli.js" "${ARGS[@]}"
+          OUT=$(node "${GITHUB_ACTION_PATH}/dist/cli.js" "${ARGS[@]}")
         else
-          npx --yes "spring-review@${SR_VERSION}" "${ARGS[@]}"
+          OUT=$(npx --yes "spring-review@${SR_VERSION}" "${ARGS[@]}")
         fi
         CODE=$?
 
+        # `::error file=…,line=…::` is a workflow command, not just text: the runner
+        # reads it and fails the job regardless of our exit code. So "don't block"
+        # has to mean "emit the same inline annotations at notice level", otherwise
+        # fail-on-error would be a lie whenever any error-severity finding exists.
+        if [ "$SR_FAIL_ON_ERROR" != "true" ]; then
+          OUT=$(printf '%s\n' "$OUT" | sed -e 's/^::error /::notice /' -e 's/^::warning /::notice /')
+        fi
+
+        printf '%s\n' "$OUT"
+
         # spring-review exits 1 for "an error-severity finding exists" and 2 for
         # "the tool itself failed". Only 1 is opt-out-able.
-        if [ "$CODE" = "1" ] && [ "$SR_FAIL_ON_ERROR" = "false" ]; then
-          echo "::warning::spring-review reported errors but fail-on-error=false"
+        if [ "$CODE" = "1" ] && [ "$SR_FAIL_ON_ERROR" != "true" ]; then
+          echo "::notice::spring-review reported errors; fail-on-error=false downgraded them to annotations"
           exit 0
         fi
         exit "$CODE"
