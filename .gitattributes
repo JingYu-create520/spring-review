@@ -1,0 +1,9 @@
+# Normalise line endings so the repository is identical on Windows and Linux.
+# Matters here specifically because a CRLF shebang line breaks the published
+# `bin`, and the sample patch must parse byte-for-byte on any checkout.
+* text=auto eol=lf
+
+*.png binary
+*.gif binary
+*.jar binary
+*.class binary
