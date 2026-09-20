@@ -13,25 +13,10 @@ summary, never to decide.
 
 > [中文 README](./README.zh-CN.md) · [Rules](#the-rules-11) · [Why not just ask the model](#why-not-just-ask-the-model) · [Limitations](#what-it-does-not-do)
 
-```console
-$ node dist/cli.js --patch examples/sample.patch
+![spring-review reviewing examples/demo-project: 6 errors and 2 warnings, each with a rule id, a line number, the offending code and a fix](./docs/assets/demo.png)
 
-src/main/java/demo/BadUserService.java
-  src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName(),而该方法带 @Transactional —— 代理不拦截自调用…
-      this.updateName(id, name);
-      → 把 updateName() 挪到另一个 Bean,或注入自身代理后再调用(@Lazy 注入本类 / AopContext.currentProxy())。
-  src/main/java/demo/BadUserService.java:45  error  SPR002  importUsers() 声明抛出受检异常 IOException,但 @Transactional
-      @Transactional
-      → @Transactional(rollbackFor = Exception.class)
-  src/main/java/demo/BadUserService.java:48  error  MYB002  importUsers() 在 for 循环中调用 userMapper.insertOne(),
-      userMapper.insertOne(user);
-      → 先收集 id 一次性查:selectByIds(ids) 或 IN (…) 批量查,再 Map<id, X> 组装。
-  src/main/resources/mapper/BadUserMapper.xml:14  error  MYB001  select#byName 用 ${keyword} 拼接 SQL…
-      WHERE user_name = '${keyword}'
-      → 改为预编译参数 #{keyword}。
-
-14 error(s)  8 warning(s)  across 2 file(s), rules hit: MYB001, MYB002, MYB003, MYB004, MYB005, SPR001…
-```
+*That is `examples/demo-project` in this repo — one command, no API key, no network.
+Every finding carries a rule id, a line number in HEAD, the evidence, and how to fix it.*
 
 Exit code is the CI contract: **0** nothing blocking, **1** at least one `error`,
 **2** the tool could not run.

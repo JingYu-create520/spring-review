@@ -11,22 +11,10 @@ LLM 只允许改写总结文案,不参与任何判定。
 
 > [English README](./README.md) · [规则清单](#规则清单11-条) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么写在明面上)
 
-```console
-$ node dist/cli.js --patch examples/sample.patch
+![spring-review 审查 examples/demo-project：6 个 error、2 个 warn，每条都带规则号、行号、证据代码和改法](./docs/assets/demo.png)
 
-src/main/java/demo/BadUserService.java
-  src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName(),而该方法带 @Transactional —— 代理不拦截自调用,事务通知不会生效。
-      this.updateName(id, name);
-      → 把 updateName() 挪到另一个 Bean,或注入自身代理后再调用(@Lazy 注入本类 / AopContext.currentProxy())。
-  src/main/java/demo/BadUserService.java:48  error  MYB002  importUsers() 在 for 循环中调用 userMapper.insertOne(),循环 N 次就打 N 次库(N+1)。
-      userMapper.insertOne(user);
-      → 先收集 id 一次性查:selectByIds(ids) 或 IN (…) 批量查,再 Map<id, X> 组装。
-  src/main/resources/mapper/BadUserMapper.xml:14  error  MYB001  select#byName 用 ${keyword} 拼接 SQL,该值会原样出现在语句里,存在 SQL 注入风险。
-      WHERE user_name = '${keyword}'
-      → 改为预编译参数 #{keyword}。
-
-14 error(s)  8 warning(s)  across 2 file(s), rules hit: MYB001, MYB002, MYB003, MYB004, MYB005, SPR001…
-```
+*图里跑的就是本仓库的 [`examples/demo-project`](./examples/demo-project)：一条命令、不需要 API key、
+不联网。每条发现都带规则号、HEAD 里的行号、证据代码，以及怎么改。*
 
 退出码就是 CI 契约:**0** 无阻塞问题,**1** 存在 error 级发现,**2** 工具自身没跑起来。
 
