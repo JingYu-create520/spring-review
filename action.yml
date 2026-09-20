@@ -71,6 +71,10 @@ runs:
         SR_TOKEN: ${{ inputs.token }}
       run: |
         set -uo pipefail
+        # GitHub runs composite steps with `bash -e`, which would abort the moment
+        # spring-review returns its "I found errors" code 1 — before any of the
+        # handling below. Turn it off deliberately; every exit code is checked.
+        set +e
         ARGS=(--diff "${SR_BASE}..${SR_HEAD:-HEAD}" --format github --min-severity "$SR_MIN_SEVERITY" --cwd "$GITHUB_WORKSPACE")
         if [ -n "$SR_EXCLUDE" ]; then
           # shellcheck disable=SC2206
