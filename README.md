@@ -40,7 +40,7 @@ folder explains why each planted case is worth a rule.
 ## Install
 
 The npm package is not published yet, so today you run it from a clone — it takes
-about 30 seconds and needs nothing but Node 18+:
+about 30 seconds and needs nothing but Node 20+:
 
 ```bash
 git clone https://github.com/JingYu-create520/spring-review.git
@@ -204,7 +204,7 @@ reputation on false positives:
 
 ```bash
 npm ci
-npm run typecheck && npm test     # 98 tests: parser, each rule, false-positive guards,
+npm run typecheck && npm test     # 105 tests: parser, each rule, false-positive guards,
                                  # CLI, MCP (in-memory + real stdio), golden output
 npm run build                     # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```

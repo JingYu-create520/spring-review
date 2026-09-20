@@ -37,6 +37,8 @@ First public version: the rule engine plus four ways to consume it.
   with it on or off, which is asserted by tests.
 - Inline suppression: `spring-review:disable[,-file]`, honoured on the same line
   and the following line.
+- Supported runtimes: Node 20 / 22 / 24 (CI matrix). Node 18 reached end of life in
+  April 2025, so the package does not claim it.
 - `.spring-review.json` for per-repo `exclude` / `disable` / `minSeverity`.
 - `examples/demo-project` — an ordinary-looking Spring Boot + MyBatis app with the
   mistakes planted unlabeled, plus two files written correctly on purpose.

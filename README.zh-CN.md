@@ -35,7 +35,7 @@ node dist/cli.js --cwd examples/demo-project --experimental \
 
 ## 安装
 
-npm 包还没发，所以现在从源码跑——只要 Node 18+，30 秒搞定：
+npm 包还没发，所以现在从源码跑——只要 Node 20+，30 秒搞定：
 
 ```bash
 git clone https://github.com/JingYu-create520/spring-review.git
