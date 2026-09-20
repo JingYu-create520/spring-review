@@ -15,7 +15,7 @@ LLM 只允许改写总结文案,不参与任何判定。
 $ node dist/cli.js --patch examples/sample.patch
 
 src/main/java/demo/BadUserService.java
-  src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName() 调用同类中带 @Transactional 的方法,代理不拦截自调用,事务通知不会生效。
+  src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName(),而该方法带 @Transactional —— 代理不拦截自调用,事务通知不会生效。
       this.updateName(id, name);
       → 把 updateName() 挪到另一个 Bean,或注入自身代理后再调用(@Lazy 注入本类 / AopContext.currentProxy())。
   src/main/java/demo/BadUserService.java:48  error  MYB002  importUsers() 在 for 循环中调用 userMapper.insertOne(),循环 N 次就打 N 次库(N+1)。

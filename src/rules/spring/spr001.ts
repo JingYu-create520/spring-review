@@ -67,8 +67,8 @@ const rule: Rule = {
                 rule,
                 unit,
                 call.line,
-                `${caller.name}() 通过${call.receiver.length ? " this." : ""}${call.callee}() 调用同类中带 @Transactional 的方法,代理不拦截自调用,事务通知不会生效。`,
-                `${caller.name}() self-invokes @Transactional ${call.callee}(); the proxy never sees it, so no transaction is started.`,
+                `${caller.name}() ${call.receiver.length ? "通过 this." : "直接调用同类的 "}${call.callee}(),而该方法带 @Transactional —— 代理不拦截自调用,事务通知不会生效。`,
+                `${caller.name}() ${call.receiver.length ? "self-invokes" : "directly calls"} the @Transactional ${call.callee}() on the same instance; the proxy never sees it, so no transaction is started.`,
                 {
                   endLine: call.line,
                   suggestion:

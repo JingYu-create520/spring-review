@@ -17,7 +17,7 @@ summary, never to decide.
 $ node dist/cli.js --patch examples/sample.patch
 
 src/main/java/demo/BadUserService.java
-  src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName() 调用同类中带 @Transactional
+  src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName(),而该方法带 @Transactional —— 代理不拦截自调用…
       this.updateName(id, name);
       → 把 updateName() 挪到另一个 Bean,或注入自身代理后再调用(@Lazy 注入本类 / AopContext.currentProxy())。
   src/main/java/demo/BadUserService.java:45  error  SPR002  importUsers() 声明抛出受检异常 IOException,但 @Transactional
