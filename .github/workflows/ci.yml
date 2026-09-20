@@ -28,13 +28,30 @@ jobs:
       - run: npm run build
 
       # The published `bin` must work as an executable, not just as a module.
+      # Note the deliberate `set +e`: spring-review exits 1 when it finds an
+      # error-severity issue, which is the CI contract, not a step failure — so
+      # every exit code here is asserted explicitly instead of aborting the shell.
       - name: CLI smoke
         run: |
-          node dist/cli.js --version
-          node dist/cli.js --list-rules | head -5
-          node dist/cli.js --cwd tests/fixtures --file java/CleanUserService.java
-          node dist/cli.js --cwd tests/fixtures --file java/BadUserService.java --format json > /tmp/out.json
-          test "$(jq -r '.summary.errors' /tmp/out.json)" -gt 0
+          set +e
+          node dist/cli.js --version | grep -q "$(node -p "require('./package.json').version")" \
+            || { echo "FAIL: --version"; exit 1; }
+
+          node dist/cli.js --list-rules > rules.json
+          test "$(node -p "require('./rules.json').length")" = "11" \
+            || { echo "FAIL: expected 11 rules"; exit 1; }
+
+          node dist/cli.js --cwd tests/fixtures --file java/CleanUserService.java > /dev/null 2>&1
+          test $? -eq 0 || { echo "FAIL: clean fixture must exit 0"; exit 1; }
+
+          node dist/cli.js --cwd tests/fixtures --file java/BadUserService.java --format json > out.json
+          test $? -eq 1 || { echo "FAIL: error findings must exit 1"; exit 1; }
+          test "$(jq -r '.summary.errors' out.json)" -gt 0 || { echo "FAIL: no errors found"; exit 1; }
+
+          node dist/cli.js --patch examples/sample.patch --format github | grep -q '^::error file=' \
+            || { echo "FAIL: github annotations missing"; exit 1; }
+
+          echo "CLI smoke OK"
 
       # Golden output is asserted by `npm test` (tests/golden.test.ts): a drift in
       # any rule's line, severity or wording fails CI.
