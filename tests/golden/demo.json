@@ -1,0 +1,201 @@
+{
+  "targets": [
+    "java/BadUserService.java",
+    "java/CleanUserService.java",
+    "xml/BadUserMapper.xml"
+  ],
+  "findings": [
+    {
+      "rule": "SPR001",
+      "file": "java/BadUserService.java",
+      "line": 35,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR002",
+      "file": "java/BadUserService.java",
+      "line": 45,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB002",
+      "file": "java/BadUserService.java",
+      "line": 48,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR003",
+      "file": "java/BadUserService.java",
+      "line": 53,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR003",
+      "file": "java/BadUserService.java",
+      "line": 66,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR003",
+      "file": "java/BadUserService.java",
+      "line": 70,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR004",
+      "file": "java/BadUserService.java",
+      "line": 77,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR004",
+      "file": "java/BadUserService.java",
+      "line": 78,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB002",
+      "file": "java/BadUserService.java",
+      "line": 102,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB002",
+      "file": "java/BadUserService.java",
+      "line": 104,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB001",
+      "file": "xml/BadUserMapper.xml",
+      "line": 14,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB001",
+      "file": "xml/BadUserMapper.xml",
+      "line": 35,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB005",
+      "file": "xml/BadUserMapper.xml",
+      "line": 45,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB002",
+      "file": "xml/BadUserMapper.xml",
+      "line": 52,
+      "severity": "error",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR005",
+      "file": "java/BadUserService.java",
+      "line": 29,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR005",
+      "file": "java/BadUserService.java",
+      "line": 31,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR006",
+      "file": "java/BadUserService.java",
+      "line": 89,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "SPR006",
+      "file": "java/BadUserService.java",
+      "line": 95,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB001",
+      "file": "xml/BadUserMapper.xml",
+      "line": 23,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB001",
+      "file": "xml/BadUserMapper.xml",
+      "line": 30,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": false
+    },
+    {
+      "rule": "MYB003",
+      "file": "xml/BadUserMapper.xml",
+      "line": 35,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB003",
+      "file": "xml/BadUserMapper.xml",
+      "line": 40,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB003",
+      "file": "xml/BadUserMapper.xml",
+      "line": 41,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    },
+    {
+      "rule": "MYB004",
+      "file": "xml/BadUserMapper.xml",
+      "line": 46,
+      "severity": "warn",
+      "hasEvidence": true,
+      "hasFix": true
+    }
+  ]
+}

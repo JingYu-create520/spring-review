@@ -1,0 +1,90 @@
+import type { Rule } from "../../types.js";
+import { draft } from "../util.js";
+import { lineAt, scopesFor, type SqlScope } from "../sql.js";
+
+/**
+ * MYB001 — SQL injection through `${}`.
+ *
+ * `${}` is raw text substitution; `#{}` becomes a bound parameter. Anything a
+ * caller can influence that reaches `${}` is injectable. Scanned in both mapper
+ * XML and `@Select("…")` annotations.
+ *
+ * Framework placeholders (MyBatis-Plus `${ew.customSqlSegment}`, Generator
+ * `${criterion.criteria}`) and `<property>`-bound names are real usages that are
+ * not caller-controlled, so they drop to `warn` instead of disappearing — and a
+ * dynamic ORDER BY / column name gets a whitelist suggestion rather than
+ * "use #{}", which is not actionable there.
+ */
+const FRAMEWORK_PLACEHOLDER = [/^ew\.\w+$/, /^criterion\.\w+$/, /^_parameter\.\w+$/];
+
+const ORDERISH_FRAGMENT = /^(sort|order|dir|direction|column|field|table|by|asc|desc)/i;
+const ORDER_CONTEXT = /(order\s+by|group\s+by|\blimit\b|\boffset\b|\bset\b|from\s*$|select\s+[\w.,*\s]*$)/i;
+
+function boundProperties(raw: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of raw.matchAll(/<property\s+name=["'](\w+)["']/g)) out.add(m[1] as string);
+  return out;
+}
+
+const rule: Rule = {
+  id: "MYB001",
+  title: "SQL 注入（${} 拼接）",
+  titleEn: "SQL injection via ${} substitution",
+  severity: "error",
+  target: "both",
+  rationale:
+    "${} 直接把值拼进 SQL 文本,#{ } 才会走预编译参数。用户可控值进入 ${} 即构成注入;动态排序/列名要用服务端白名单映射,而不是拼接。",
+  run({ unit, xml, java }) {
+    const out = [];
+    for (const scope of scopesFor({ xml, java })) {
+      const bound = boundProperties(scope.raw);
+      for (const m of scope.raw.matchAll(/\$\{([^}]*)\}/g)) {
+        const fragment = (m[1] ?? "").trim();
+        if (!fragment) continue;
+        const head = (fragment.split(/[.\s([]/)[0] ?? "").trim();
+        if (bound.has(head)) continue;
+        const offset = m.index ?? 0;
+        const line = lineAt(scope.raw, offset, scope.line);
+        const context = scope.raw.slice(Math.max(0, offset - 60), offset + fragment.length + 20);
+
+        if (FRAMEWORK_PLACEHOLDER.some((re) => re.test(fragment))) {
+          out.push(
+            draft(
+              rule,
+              unit,
+              line,
+              `\${${fragment}} 是 MyBatis-Plus / Generator 的框架占位,值来自 Wrapper 构造而非直接拼接;仍建议确认入参没有被原样塞进 Wrapper。`,
+              `\${${fragment}} is a framework placeholder (wrapper/criteria); check nothing user-controlled lands in it.`,
+              { severity: "warn" },
+            ),
+          );
+          continue;
+        }
+
+        const dynamicName = ORDERISH_FRAGMENT.test(head) && ORDER_CONTEXT.test(context);
+        out.push(
+          draft(
+            rule,
+            unit,
+            line,
+            `${label(scope)} 用 \${${fragment}} 拼接 SQL${dynamicName ? "(动态排序/列名场景)" : ""},该值会原样出现在语句里,存在 SQL 注入风险。`,
+            `${label(scope)} interpolates \${${fragment}} into SQL text instead of binding it.`,
+            {
+              severity: dynamicName ? "warn" : "error",
+              suggestion: dynamicName
+                ? '用服务端白名单映射列名:Map<String,String> SORTABLE = Map.of("name","user_name"),取 SORTABLE.get(param) 拼 SQL,取不到就报错;条件值仍用 #{ }。'
+                : `改为预编译参数 #{${head}}。`,
+            },
+          ),
+        );
+      }
+    }
+    return out;
+  },
+};
+
+function label(scope: SqlScope): string {
+  return scope.source === "xml" ? `${scope.kind}#${scope.id}` : `@${scope.kind[0]?.toUpperCase()}${scope.kind.slice(1)} 注解 SQL`;
+}
+
+export default rule;

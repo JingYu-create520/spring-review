@@ -1,0 +1,25 @@
+name: spring-review PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The action diffs base..head, so both endpoints must exist locally.
+          fetch-depth: 0
+
+      - uses: JingYu-create520/spring-review@v0
+        with:
+          min-severity: warn
+          # Exclude generated code and test fixtures:
+          exclude: "**/generated/** **/*Test.java"
+          # Set to false to annotate the PR without blocking the merge:
+          fail-on-error: true

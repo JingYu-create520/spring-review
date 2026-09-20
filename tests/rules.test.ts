@@ -1,0 +1,251 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { reviewUnits } from "../src/rules/engine.js";
+import { rules } from "../src/rules/index.js";
+import type { Finding, ReviewOptions, ReviewUnit } from "../src/types.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const read = (...parts: string[]) => readFileSync(join(here, "fixtures", ...parts), "utf8");
+
+function unit(path: string, content: string, addedLines: Set<number> | null = null): ReviewUnit {
+  return {
+    path,
+    content,
+    addedLines,
+    contentSource: "worktree",
+    complete: true,
+    lang: path.endsWith(".xml") ? "xml" : "java",
+  };
+}
+
+const DEFAULTS: ReviewOptions = { minSeverity: "info", exclude: [], experimental: false };
+
+function run(units: ReviewUnit[], overrides: Partial<ReviewOptions> = {}): Finding[] {
+  return reviewUnits(units, rules, { ...DEFAULTS, ...overrides }).findings;
+}
+
+function lines(finding: Finding) {
+  return finding.line;
+}
+
+function ruleLines(findings: Finding[], rule: string): number[] {
+  return findings.filter((f) => f.rule === rule).map(lines).sort((a, b) => a - b);
+}
+
+function lineOf(source: string, needle: string): number {
+  const at = source.split("\n").findIndex((l) => l.includes(needle));
+  if (at < 0) throw new Error(`fixture line not found: ${needle}`);
+  return at + 1;
+}
+
+/**
+ * Rules report on the annotation line (the thing to change, and what a
+ * reviewer's cursor lands on), so a member's line is the topmost annotation
+ * directly above its signature.
+ */
+function annoOf(source: string, signatureNeedle: string): number {
+  const lines = source.split("\n");
+  const sig = lines.findIndex((l) => l.includes(signatureNeedle));
+  if (sig < 0) throw new Error(`fixture line not found: ${signatureNeedle}`);
+  let at = sig;
+  while (at > 0 && (lines[at - 1] ?? "").trim().startsWith("@")) at--;
+  return at + 1;
+}
+
+const badSrc = read("java", "BadUserService.java");
+const bad = unit("com/example/demo/service/BadUserService.java", badSrc);
+const cleanSrc = read("java", "CleanUserService.java");
+const clean = unit("com/example/demo/service/CleanUserService.java", cleanSrc);
+
+const badXmlSrc = read("xml", "BadUserMapper.xml");
+const badXml = unit("com/example/demo/mapper/BadUserMapper.xml", badXmlSrc);
+const cleanXmlSrc = read("xml", "CleanUserMapper.xml");
+const mapperIface = read("java", "UserMapper.java");
+const cleanXml = unit("com/example/demo/mapper/CleanUserMapper.xml", cleanXmlSrc);
+cleanXml.companion = { path: "com/example/demo/mapper/UserMapper.java", content: mapperIface };
+
+describe("SPR rules on the deliberately broken service", () => {
+  const findings = run([bad]);
+
+  it("SPR001 flags this.updateName() from a non-transactional caller", () => {
+    expect(ruleLines(findings, "SPR001")).toEqual([lineOf(badSrc, "this.updateName(id, name);")]);
+  });
+
+  it("SPR002 flags the checked-exception transactional method without rollbackFor", () => {
+    expect(ruleLines(findings, "SPR002")).toEqual([annoOf(badSrc, "public void importUsers")]);
+  });
+
+  it("SPR003 covers non-public, self-invoked and argument-taking @Async/@Scheduled", () => {
+    const at = ruleLines(findings, "SPR003");
+    expect(at).toContain(annoOf(badSrc, "private void drainQueue()"));
+    expect(at).toContain(lineOf(badSrc, "notifyLater(payload);"));
+    expect(at).toContain(annoOf(badSrc, "public void nightly(String tenant)"));
+  });
+
+  it("SPR004 flags executors and threads created inside the bean", () => {
+    const at = ruleLines(findings, "SPR004");
+    expect(at).toContain(lineOf(badSrc, "Executors.newFixedThreadPool(8)"));
+    expect(at).toContain(lineOf(badSrc, "new Thread("));
+  });
+
+  it("SPR006 flags both the missing key and the bypassed cache", () => {
+    const at = ruleLines(findings, "SPR006");
+    expect(at).toContain(annoOf(badSrc, "public User findUser(Long tenantId, Long userId)"));
+    expect(at).toContain(lineOf(badSrc, "this.findUser(tenantId, userId)"));
+  });
+
+  it("MYB002 flags mapper calls inside for and forEach", () => {
+    const at = ruleLines(findings, "MYB002");
+    expect(at).toContain(lineOf(badSrc, "result.add(userMapper.selectById(id))"));
+    expect(at).toContain(lineOf(badSrc, "deptMapper.selectUser(id)"));
+    expect(at).toContain(lineOf(badSrc, "userMapper.insertOne(user)"));
+  });
+
+  it("keeps SPR005 out until --experimental is passed", () => {
+    expect(findings.some((f) => f.rule === "SPR005")).toBe(false);
+    const withExperimental = run([bad], { experimental: true });
+    const at = ruleLines(withExperimental, "SPR005");
+    expect(at).toEqual(
+      expect.arrayContaining([
+        lineOf(badSrc, "private final Map<String, Integer> counter"),
+        lineOf(badSrc, "private final List<User> buffer"),
+      ]),
+    );
+  });
+});
+
+describe("false positives: the clean service must produce nothing", () => {
+  it("0 findings with default rules", () => {
+    expect(run([clean])).toEqual([]);
+  });
+
+  it("0 findings even with --experimental", () => {
+    expect(run([clean], { experimental: true })).toEqual([]);
+  });
+});
+
+describe("MYB rules on the deliberately broken mapper", () => {
+  const findings = run([badXml]);
+
+  it("MYB001 errors on a value interpolated into WHERE", () => {
+    const hits = findings.filter((f) => f.rule === "MYB001" && f.severity === "error");
+    expect(hits.map((h) => h.line)).toContain(lineOf(badXmlSrc, "'${keyword}'"));
+  });
+
+  it("MYB001 downgrades dynamic ORDER BY names to warn with a whitelist suggestion", () => {
+    const orderLine = lineOf(badXmlSrc, "ORDER BY ${sortField}");
+    const hits = findings.filter((f) => f.rule === "MYB001" && f.line === orderLine);
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((h) => h.severity === "warn")).toBe(true);
+    expect(hits.every((h) => h.suggestion?.includes("白名单"))).toBe(true);
+  });
+
+  it("MYB001 treats the MyBatis-Plus wrapper fragment as framework usage", () => {
+    const wrapper = findings.find((f) => f.line === lineOf(badXmlSrc, "${ew.customSqlSegment}"));
+    expect(wrapper?.rule).toBe("MYB001");
+    expect(wrapper?.severity).toBe("warn");
+    // …and MYB005 must not additionally claim the statement is unbounded.
+    expect(ruleLines(findings, "MYB005")).not.toContain(lineOf(badXmlSrc, "<select id=\"byWrapper\""));
+  });
+
+  it("MYB003 catches the literal, the CONCAT and the <bind> forms", () => {
+    const at = ruleLines(findings, "MYB003");
+    expect(at).toContain(lineOf(badXmlSrc, "LIKE '%${keyword}%'"));
+    expect(at).toContain(lineOf(badXmlSrc, "LIKE concat('%', #{keyword}, '%')"));
+    expect(at).toContain(lineOf(badXmlSrc, "<bind name=\"pattern\""));
+  });
+
+  it("MYB004 flags SELECT * but never count(1)", () => {
+    expect(ruleLines(findings, "MYB004")).toEqual([lineOf(badXmlSrc, "SELECT * FROM user")]);
+  });
+
+  it("MYB005 flags the unbounded dump", () => {
+    expect(ruleLines(findings, "MYB005")).toContain(lineOf(badXmlSrc, "<select id=\"dumpAll\""));
+  });
+
+  it("MYB002 flags the resultMap nested select", () => {
+    expect(ruleLines(findings, "MYB002")).toContain(lineOf(badXmlSrc, 'select="deptById"'));
+  });
+});
+
+describe("false positives: the clean mapper must produce nothing", () => {
+  it("0 findings when the companion interface proves selectPage is paged", () => {
+    expect(run([cleanXml])).toEqual([]);
+  });
+
+  it("selectPage is reported when the interface is not available (documented degradation)", () => {
+    const blind = unit("com/example/demo/mapper/CleanUserMapper.xml", cleanXmlSrc);
+    const hits = run([blind]).filter((f) => f.rule === "MYB005");
+    expect(hits.map((h) => h.line)).toEqual([lineOf(cleanXmlSrc, '<select id="selectPage"')]);
+  });
+});
+
+describe("engine behaviour", () => {
+  it("reports only lines the change actually added", () => {
+    const added = new Set([lineOf(badSrc, "this.updateName(id, name);")]);
+    const findings = run([unit(bad.path, bad.content, added)]);
+    expect(findings.map((f) => f.rule)).toEqual(["SPR001"]);
+  });
+
+  it("honours a trailing-comment suppression on its own line", () => {
+    const src = [
+      "class S {",
+      "  void a() { this.b(); } // spring-review:disable SPR001",
+      "  @Transactional void b() {}",
+      "}",
+    ].join("\n");
+    expect(run([unit("S.java", src)]).filter((f) => f.rule === "SPR001")).toEqual([]);
+  });
+
+  it("honours a standalone-comment suppression on the next line", () => {
+    const standalone = [
+      "class S {",
+      "  void a() {",
+      "    // spring-review:disable SPR001 \"已确认在同一事务内\"",
+      "    this.b();",
+      "  }",
+      "  @Transactional void b() {}",
+      "}",
+    ].join("\n");
+    expect(run([unit("S.java", standalone)]).filter((f) => f.rule === "SPR001")).toEqual([]);
+    const withoutComment = standalone.replace(/.*disable SPR001.*\n/, "");
+    expect(run([unit("S.java", withoutComment)]).filter((f) => f.rule === "SPR001")).toHaveLength(1);
+  });
+
+  it("supports disable-file and rule-scoped suppression", () => {
+    const src = [
+      "// spring-review:disable-file SPR001",
+      "class S {",
+      "  void a() { this.b(); }",
+      "  @Transactional void b() {}",
+      "}",
+    ].join("\n");
+    const findings = run([unit("S.java", src)]);
+    expect(findings.filter((f) => f.rule === "SPR001")).toEqual([]);
+    expect(findings.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("respects --min-severity and --disable", () => {
+    const errorsOnly = run([bad], { minSeverity: "error" });
+    expect(errorsOnly.every((f) => f.severity === "error")).toBe(true);
+    const disabled = run([bad], { disabledRules: ["SPR001", "MYB002"] });
+    expect(disabled.some((f) => f.rule === "SPR001")).toBe(false);
+    expect(disabled.some((f) => f.rule === "MYB002")).toBe(false);
+  });
+
+  it("fills snippets from the reviewed file", () => {
+    const findings = run([bad]);
+    const hit = findings.find((f) => f.rule === "SPR001")!;
+    expect(hit.snippet).toContain("this.updateName");
+  });
+
+  it("does not crash on a unit that is only a patch fragment", () => {
+    const fragment = unit("X.java", "\n\n    this.updateName(id, name);\n\n", new Set([3]));
+    fragment.complete = false;
+    const result = reviewUnits([fragment], rules, { ...DEFAULTS });
+    expect(result.findings).toEqual([]);
+    expect(result.skipped.some((s) => s.reason.includes("patch fragment"))).toBe(true);
+  });
+});

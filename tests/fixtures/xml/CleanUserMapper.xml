@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.UserMapper">
+
+    <sql id="Base_Column_List">
+        id, user_name, dept_id, status, create_time
+    </sql>
+
+    <!-- 条件齐全 + 显式列 + LIMIT,必须 0 findings -->
+    <select id="selectByStatus" resultType="com.example.demo.model.User">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM user
+        WHERE status = #{status}
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <!-- 右匹配 LIKE:可以走索引 -->
+    <select id="searchPrefix" resultType="com.example.demo.model.User">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM user
+        WHERE user_name LIKE concat(#{keyword}, '%')
+        LIMIT 50
+    </select>
+
+    <!-- 动态排序走 ${} 会被降为 warn,这里用白名单后的安全写法 -->
+    <select id="countByDept" resultType="long">
+        SELECT count(1) FROM user WHERE dept_id = #{deptId}
+    </select>
+
+    <!-- 分页由 MyBatis-Plus 的 IPage 参数注入,SQL 里没有 limit 也不算无界 -->
+    <select id="selectPage" resultType="com.example.demo.model.User">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM user
+    </select>
+
+    <update id="markInactive">
+        UPDATE user SET status = 0 WHERE last_login &lt; #{before}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM user WHERE id = #{id}
+    </delete>
+</mapper>

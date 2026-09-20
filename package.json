@@ -1,0 +1,68 @@
+{
+  "name": "spring-review",
+  "version": "0.1.0",
+  "description": "Offline-first AI code review for Spring & MyBatis: git diff in, line-level findings out. Catches transactional self-invocation, N+1, ${} injection, thread-pool misuse.",
+  "keywords": [
+    "spring",
+    "springboot",
+    "mybatis",
+    "code-review",
+    "static-analysis",
+    "git-diff",
+    "linter",
+    "mcp",
+    "github-actions",
+    "ai"
+  ],
+  "license": "MIT",
+  "author": "JingYu-create520",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JingYu-create520/spring-review.git"
+  },
+  "type": "module",
+  "bin": {
+    "spring-review": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@types/node": "^22.5.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

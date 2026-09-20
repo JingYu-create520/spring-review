@@ -1,0 +1,94 @@
+name: spring-review
+description: Line-level Spring & MyBatis review on a PR diff — offline deterministic rules, no API key required.
+author: JingYu-create520
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  base:
+    description: Base commit or ref of the comparison. Defaults to the PR base SHA, then HEAD~1.
+    required: false
+    default: ""
+  head:
+    description: Head commit or ref. Defaults to the PR head SHA, then the working tree.
+    required: false
+    default: ""
+  min-severity:
+    description: error | warn | info
+    required: false
+    default: warn
+  exclude:
+    description: Space-separated globs to skip, e.g. "**/generated/**"
+    required: false
+    default: ""
+  experimental:
+    description: Include experimental rules (SPR005). true|false
+    required: false
+    default: "false"
+  fail-on-error:
+    description: Fail the job when an error-severity finding is reported. true|false
+    required: false
+    default: "true"
+  version:
+    description: spring-review version to run from npm.
+    required: false
+    default: latest
+  token:
+    description: Optional GITHUB_TOKEN; only needed if the npm package is private.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve comparison range
+      shell: bash
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_HEAD: ${{ inputs.head }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        BASE="${INPUT_BASE:-${PR_BASE:-HEAD~1}}"
+        HEAD_REF="${INPUT_HEAD:-${PR_HEAD:-}}"
+        # A shallow checkout has neither endpoint; ask for what we need.
+        if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+          git fetch --no-tags --depth=200 origin "${BASE}" || git fetch --unshallow || true
+        fi
+        echo "SR_BASE=${BASE}" >> "$GITHUB_ENV"
+        echo "SR_HEAD=${HEAD_REF}" >> "$GITHUB_ENV"
+
+    - name: Run spring-review
+      shell: bash
+      env:
+        SR_VERSION: ${{ inputs.version }}
+        SR_MIN_SEVERITY: ${{ inputs.min-severity }}
+        SR_EXCLUDE: ${{ inputs.exclude }}
+        SR_EXPERIMENTAL: ${{ inputs.experimental }}
+        SR_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        SR_TOKEN: ${{ inputs.token }}
+      run: |
+        set -uo pipefail
+        ARGS=(--diff "${SR_BASE}..${SR_HEAD:-HEAD}" --format github --min-severity "$SR_MIN_SEVERITY" --cwd "$GITHUB_WORKSPACE")
+        if [ -n "$SR_EXCLUDE" ]; then
+          # shellcheck disable=SC2206
+          ARGS+=(--exclude $SR_EXCLUDE)
+        fi
+        if [ "$SR_EXPERIMENTAL" = "true" ]; then ARGS+=(--experimental); fi
+
+        if [ "$SR_VERSION" = "local" ]; then
+          node "${GITHUB_ACTION_PATH}/dist/cli.js" "${ARGS[@]}"
+        else
+          npx --yes "spring-review@${SR_VERSION}" "${ARGS[@]}"
+        fi
+        CODE=$?
+
+        # spring-review exits 1 for "an error-severity finding exists" and 2 for
+        # "the tool itself failed". Only 1 is opt-out-able.
+        if [ "$CODE" = "1" ] && [ "$SR_FAIL_ON_ERROR" = "false" ]; then
+          echo "::warning::spring-review reported errors but fail-on-error=false"
+          exit 0
+        fi
+        exit "$CODE"

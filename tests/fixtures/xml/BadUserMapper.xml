@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.mapper.BadUserMapper">
+
+    <sql id="Cols">
+        id, user_name, dept_id
+    </sql>
+
+    <!-- MYB001: 用户可控值直接拼进 WHERE -->
+    <select id="byName" resultType="map">
+        SELECT <include refid="Cols"/>
+        FROM user
+        WHERE user_name = '${keyword}'
+        LIMIT 10
+    </select>
+
+    <!-- MYB001(降级): 动态排序字段,给白名单建议 -->
+    <select id="listSorted" resultType="map">
+        SELECT <include refid="Cols"/>
+        FROM user
+        WHERE status = 1
+        ORDER BY ${sortField} ${sortDir}
+        LIMIT 50
+    </select>
+
+    <!-- MYB001(白名单命中后降为 warn): MyBatis-Plus wrapper 片段 -->
+    <select id="byWrapper" resultType="map">
+        SELECT <include refid="Cols"/>
+        FROM user ${ew.customSqlSegment}
+    </select>
+
+    <!-- MYB003: 字面量左通配 -->
+    <select id="search1" resultType="map">
+        SELECT <include refid="Cols"/> FROM user WHERE user_name LIKE '%${keyword}%' LIMIT 20
+    </select>
+
+    <!-- MYB003: 现实里最常见的 concat 形态 -->
+    <select id="search2" resultType="map">
+        <bind name="pattern" value="'%' + keyword + '%'"/>
+        SELECT <include refid="Cols"/> FROM user WHERE user_name LIKE concat('%', #{keyword}, '%') LIMIT 20
+    </select>
+
+    <!-- MYB004 + MYB005: select * 且无 where 无 limit -->
+    <select id="dumpAll" resultType="map">
+        SELECT * FROM user
+    </select>
+
+    <!-- MYB002: resultMap 嵌套 select -->
+    <resultMap id="UserWithDept" type="com.example.demo.model.User">
+        <id column="id" property="id"/>
+        <association property="dept" column="dept_id" select="deptById"/>
+    </resultMap>
+
+    <select id="deptById" resultType="map">
+        SELECT name FROM dept WHERE id = #{deptId}
+    </select>
+</mapper>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  A commented-out disaster must never be reported:
+  select * from user where name like '%x%' and id = ${id}
+-->
+<mapper namespace="com.example.demo.edge.EdgeMapper">
+
+    <sql id="Base_Column_List">
+        id, user_name, dept_id, create_time
+    </sql>
+
+    <select id="byIds" resultType="com.example.demo.edge.User">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM user
+        <where>
+            <if test="ids != null">
+                id IN
+                <foreach collection="ids" item="i" open="(" separator="," close=")">#{i}</foreach>
+            </if>
+        </where>
+        LIMIT 100
+    </select>
+
+    <select id="cdata" resultType="map"><![CDATA[
+        SELECT id FROM log WHERE level <> 'ERROR' AND msg LIKE 'a%' AND id < 100
+    ]]></select>
+
+    <select id="paged" resultType="map">
+        SELECT id, user_name FROM user WHERE status = #{status}
+    </select>
+
+    <resultMap id="UserWithDept" type="com.example.demo.edge.User">
+        <id column="id" property="id"/>
+        <association property="dept" column="dept_id" select="deptById"/>
+    </resultMap>
+
+    <select id="deptById" resultType="map">
+        SELECT id, name FROM dept WHERE id = #{deptId}
+    </select>
+</mapper>

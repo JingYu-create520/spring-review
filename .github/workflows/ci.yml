@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # The published `bin` must work as an executable, not just as a module.
+      - name: CLI smoke
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js --list-rules | head -5
+          node dist/cli.js --cwd tests/fixtures --file java/CleanUserService.java
+          node dist/cli.js --cwd tests/fixtures --file java/BadUserService.java --format json > /tmp/out.json
+          test "$(jq -r '.summary.errors' /tmp/out.json)" -gt 0
+
+      # Golden output is asserted by `npm test` (tests/golden.test.ts): a drift in
+      # any rule's line, severity or wording fails CI.
+
+  action-self-test:
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci && npm run build
+      - name: Review the fixture commit through action.yml
+        uses: ./
+        with:
+          base: HEAD~1
+          head: HEAD
+          version: local
+          fail-on-error: "false"
