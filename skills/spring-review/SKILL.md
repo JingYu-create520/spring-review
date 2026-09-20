@@ -15,17 +15,20 @@ Deterministic rules, offline. Run it, read the findings, fix them, run it again.
 
 ## How to run it
 
+`spring-review` below means either the published binary or your local build —
+until the npm package is live, use `node /path/to/spring-review/dist/cli.js`.
+
 Whole file (fastest feedback while editing):
 
 ```bash
-npx --yes spring-review --file src/main/java/demo/UserService.java --format json
+spring-review --file src/main/java/demo/UserService.java --format json
 ```
 
 Your own uncommitted change, so only added lines are reported:
 
 ```bash
-npx --yes spring-review --format json            # working tree vs HEAD
-npx --yes spring-review --diff HEAD~1..HEAD --format json
+spring-review --format json            # working tree vs HEAD
+spring-review --diff HEAD~1..HEAD --format json
 ```
 
 Flags worth knowing: `--min-severity error|warn|info` (default `warn`),
@@ -77,7 +80,7 @@ A standalone comment suppresses the **next** line; a trailing comment suppresses
 
 ## Rules (11)
 
-`npx spring-review --list-rules` prints the machine-readable catalogue with
+`spring-review --list-rules` prints the machine-readable catalogue with
 rationale text — quote that when explaining a finding to the user.
 
 | id | what it catches | severity |

@@ -12,7 +12,7 @@ LLM 只允许改写总结文案,不参与任何判定。
 > [English README](./README.md) · [规则清单](#规则清单11-条) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么写在明面上)
 
 ```console
-$ npx spring-review --patch examples/sample.patch
+$ node dist/cli.js --patch examples/sample.patch
 
 src/main/java/demo/BadUserService.java
   src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName() 调用同类中带 @Transactional 的方法,代理不拦截自调用,事务通知不会生效。
@@ -32,16 +32,23 @@ src/main/java/demo/BadUserService.java
 
 ## 安装
 
-```bash
-npm i -D spring-review         # 项目内
-npx spring-review --help       # 或临时跑一次
-```
-
-不经过 npm、直接跑仓库:
+npm 包还没发，所以现在从源码跑——只要 Node 18+，30 秒搞定：
 
 ```bash
-npm ci && npm run build && node dist/cli.js --cwd tests/fixtures --file java/BadUserService.java
+git clone https://github.com/JingYu-create520/spring-review.git
+cd spring-review
+npm ci && npm run build
+node dist/cli.js --patch examples/sample.patch     # 先在我们准备的示例 diff 上试一把
 ```
+
+审自己的项目（在项目根目录里跑）：
+
+```bash
+node /路径/spring-review/dist/cli.js --diff HEAD~1..HEAD
+node /路径/spring-review/dist/cli.js --file src/main/java/demo/UserService.java
+```
+
+等 npm 包发出去后，这里会变成 `npm i -D spring-review` / `npx spring-review`，下面所有命令都不用改。
 
 ## 四种用法
 
@@ -59,6 +66,9 @@ spring-review --patch pr.patch --format github
 
 **2 · GitHub Action:PR 自动行级评论**
 
+*（这个形态依赖 npm 包，发包当天即可用；在那之前可以在 workflow 里用 `script:` 步骤
+调你 clone 出来的 `dist/cli.js`）*
+
 ```yaml
 # .github/workflows/spring-review.yml
 on: [pull_request]
@@ -69,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: JingYu-create520/spring-review@v0
+      - uses: JingYu-create520/spring-review@v0.1.0
         with:
           exclude: "**/generated/**"
 ```
@@ -83,6 +93,19 @@ jobs:
 {
   "mcpServers": {
     "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
+  }
+}
+```
+
+npm 没发也能用，直接指到你 clone 的那份：
+
+```json
+{
+  "mcpServers": {
+    "spring-review": {
+      "command": "node",
+      "args": ["/路径/spring-review/dist/cli.js", "mcp"]
+    }
   }
 }
 ```

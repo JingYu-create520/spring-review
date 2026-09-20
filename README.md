@@ -14,7 +14,7 @@ summary, never to decide.
 > [中文 README](./README.zh-CN.md) · [Rules](#the-rules-11) · [Why not just ask the model](#why-not-just-ask-the-model) · [Limitations](#what-it-does-not-do)
 
 ```console
-$ npx spring-review --patch examples/sample.patch
+$ node dist/cli.js --patch examples/sample.patch
 
 src/main/java/demo/BadUserService.java
   src/main/java/demo/BadUserService.java:35  error  SPR001  rename() 通过 this.updateName() 调用同类中带 @Transactional
@@ -38,16 +38,25 @@ Exit code is the CI contract: **0** nothing blocking, **1** at least one `error`
 
 ## Install
 
-```bash
-npm i -D spring-review         # per project
-npx spring-review --help       # or run it ad hoc
-```
-
-Run from a clone without publishing anything:
+The npm package is not published yet, so today you run it from a clone — it takes
+about 30 seconds and needs nothing but Node 18+:
 
 ```bash
-npm ci && npm run build && node dist/cli.js --cwd tests/fixtures --file java/BadUserService.java
+git clone https://github.com/JingYu-create520/spring-review.git
+cd spring-review
+npm ci && npm run build
+node dist/cli.js --patch examples/sample.patch     # try it on our demo diff
 ```
+
+Reviewing your own project, from inside it:
+
+```bash
+node /path/to/spring-review/dist/cli.js --diff HEAD~1..HEAD
+node /path/to/spring-review/dist/cli.js --file src/main/java/demo/UserService.java
+```
+
+Once the package is on npm this becomes `npm i -D spring-review` / `npx spring-review`,
+and every command below keeps working unchanged.
 
 ## Four ways to use it
 
@@ -63,6 +72,9 @@ spring-review --patch pr.patch --format github
 
 **2 · GitHub Action, on every PR**
 
+*(needs the npm package, so it lights up the day it is published — until then run
+the CLI in a plain `script:` step against your clone)*
+
 ```yaml
 # .github/workflows/spring-review.yml
 on: [pull_request]
@@ -73,7 +85,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: JingYu-create520/spring-review@v0
+      - uses: JingYu-create520/spring-review@v0.1.0
         with:
           exclude: "**/generated/**"
 ```
@@ -88,6 +100,19 @@ annotate without blocking.
 {
   "mcpServers": {
     "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
+  }
+}
+```
+
+Works today without npm, pointing at your clone:
+
+```json
+{
+  "mcpServers": {
+    "spring-review": {
+      "command": "node",
+      "args": ["/path/to/spring-review/dist/cli.js", "mcp"]
+    }
   }
 }
 ```
