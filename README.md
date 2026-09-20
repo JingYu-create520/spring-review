@@ -36,6 +36,22 @@ src/main/java/demo/BadUserService.java
 Exit code is the CI contract: **0** nothing blocking, **1** at least one `error`,
 **2** the tool could not run.
 
+### See it on code that isn't a test fixture
+
+[`examples/demo-project`](./examples/demo-project) is a small, deliberately ordinary
+Spring Boot + MyBatis app — orders, stock, price rules — with the mistakes planted
+where they occur in real projects and no `// SPR001 here` labels. Two files in it are
+written the right way and must come back silent; `tests/demo-project.test.ts` fails
+CI if any of that stops being true.
+
+```bash
+node dist/cli.js --cwd examples/demo-project --experimental \
+  --file $(cd examples/demo-project && find src -name '*.java' -o -name '*.xml')
+```
+
+20 findings, all 11 rules represented, zero on the clean files. The table in that
+folder explains why each planted case is worth a rule.
+
 ## Install
 
 The npm package is not published yet, so today you run it from a clone — it takes

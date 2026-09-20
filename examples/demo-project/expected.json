@@ -1,0 +1,22 @@
+{
+  "$comment": "What a review of this demo must look like. The point is not the count — it is that every rule fires on code that reads like a normal business project, and that the two files written the right way stay silent.",
+  "cleanFiles": [
+    "src/main/java/com/example/shop/order/PriceCalculator.java",
+    "src/main/resources/mapper/PriceRuleMapper.xml"
+  ],
+  "expectedRules": [
+    "SPR001",
+    "SPR002",
+    "SPR003",
+    "SPR004",
+    "SPR005",
+    "SPR006",
+    "MYB001",
+    "MYB002",
+    "MYB003",
+    "MYB004",
+    "MYB005"
+  ],
+  "minFindings": 18,
+  "maxFindings": 30
+}

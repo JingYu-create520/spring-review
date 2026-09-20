@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.shop.mapper.StockMapper">
+
+    <resultMap id="StockView" type="com.example.shop.model.Stock">
+        <id column="id" property="id"/>
+        <result column="sku_id" property="skuId"/>
+        <!-- 每行都会再打一次库：N+1 是框架替你做出来的 -->
+        <association property="sku" column="sku_id" select="com.example.shop.mapper.SkuMapper.selectById"/>
+    </resultMap>
+
+    <select id="selectStock" resultType="int">
+        SELECT quantity FROM stock WHERE sku_id = #{skuId} AND warehouse_id = #{warehouseId}
+    </select>
+
+    <select id="selectStockSimple" resultType="int">
+        SELECT quantity FROM stock WHERE sku_id = #{skuId}
+    </select>
+
+    <!-- 导出用：没有条件、没有分页、还取了所有列 -->
+    <select id="exportAll" resultType="map">
+        SELECT * FROM stock
+    </select>
+
+    <!-- 后台搜索：左右都通配 -->
+    <select id="searchSku" resultType="string">
+        SELECT sku_name FROM sku
+        WHERE sku_name LIKE concat('%', #{keyword}, '%')
+        LIMIT 20
+    </select>
+
+    <update id="flushPending">
+        UPDATE stock SET synced = 1 WHERE synced = 0
+    </update>
+</mapper>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.shop.mapper.PriceRuleMapper">
+
+    <sql id="Rule_Column_List">
+        id, rule_name, rate, channel, effective_at
+    </sql>
+
+    <!-- 这个文件是 demo 的负例：条件、列清单、上限齐全，必须 0 发现 -->
+    <select id="selectEffective" resultType="com.example.shop.model.PriceRule">
+        SELECT
+        <include refid="Rule_Column_List"/>
+        FROM price_rule
+        WHERE channel = #{channel}
+          AND effective_at &lt;= now()
+        ORDER BY priority DESC
+        LIMIT 20
+    </select>
+
+    <select id="countByChannel" resultType="long">
+        SELECT count(1) FROM price_rule WHERE channel = #{channel}
+    </select>
+
+    <select id="selectPage" resultType="com.example.shop.model.PriceRule">
+        SELECT
+        <include refid="Rule_Column_List"/>
+        FROM price_rule
+        WHERE enabled = 1
+    </select>
+
+    <update id="touch">
+        UPDATE price_rule SET updated_at = now() WHERE id = #{id}
+    </update>
+</mapper>

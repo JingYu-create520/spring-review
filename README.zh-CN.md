@@ -30,6 +30,21 @@ src/main/java/demo/BadUserService.java
 
 退出码就是 CI 契约:**0** 无阻塞问题,**1** 存在 error 级发现,**2** 工具自身没跑起来。
 
+### 别看测试样例,看这个
+
+[`examples/demo-project`](./examples/demo-project) 是一个刻意写得平平无奇的 Spring Boot +
+MyBatis 小工程——订单、库存、价格规则——坑埋在真实代码会长它的地方,没有
+`// 这里触发 SPR001` 这种标签。里面两个文件是照正确写法写的,必须一条不报;
+`tests/demo-project.test.ts` 把这件事钉在 CI 上,哪天不成立了就红。
+
+```bash
+node dist/cli.js --cwd examples/demo-project --experimental \
+  --file $(cd examples/demo-project && find src -name '*.java' -o -name '*.xml')
+```
+
+20 条发现,11 条规则全部有代表,干净文件 0 条。那个目录里的表格逐条解释了每个坑
+为什么值得一条规则。
+
 ## 安装
 
 npm 包还没发，所以现在从源码跑——只要 Node 18+，30 秒搞定：
