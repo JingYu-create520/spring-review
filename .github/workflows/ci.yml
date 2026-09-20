@@ -83,7 +83,8 @@ jobs:
           node dist/cli.js --cwd tests/fixtures --format sarif \
             --file java/BadUserService.java xml/BadUserMapper.xml > spring-review.sarif
           test -s spring-review.sarif
-          node -e "const s=require('./spring-review.sarif');if(s.runs[0].results.length===0)throw new Error('empty SARIF')"
+          # require() only auto-parses .json, so read the file explicitly.
+          node -e "const s=JSON.parse(require('node:fs').readFileSync('spring-review.sarif','utf8')); if(!s.runs?.[0]?.results?.length) throw new Error('SARIF had no results')"
 
       - uses: github/codeql-action/upload-sarif@v3
         with:
