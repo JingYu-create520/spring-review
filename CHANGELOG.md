@@ -4,7 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
-## 0.1.0 — unreleased
+## 0.1.1 — 2026-09-21
+
+Both defects below were found by running the tool over a real Spring gateway project rather than
+over the bundled demo.
+
+### Fixed
+
+- **Whole-file mode reported a clean run over zero files.** `spring-review src/main/java` and
+  `spring-review "src/**/*.java"` passed every path straight to `unitFromFile`, which returns
+  null for a directory, so the run reviewed nothing and said nothing was wrong. The only trace was
+  a `skipped` entry inside JSON output nobody reads. Paths now expand: directories recurse
+  (`target/`, `build/`, `node_modules/`, `generated/` pruned), globs match, overlapping inputs
+  collapse to one unit per file, and `--exclude` applies to whatever the walk finds. An input that
+  yields nothing reviewable is named in the output instead of passing quietly.
+- **`repository.findByName(name).map(e -> repository.save(e))` was reported as an N+1.**
+  `loopRanges` matched `.map(` without asking what the receiver was, so `Optional.map` counted as
+  a stream loop -- and the message asserted a cost the code cannot incur, since the lambda runs at
+  most once. A single-result receiver (`find*/get*/load*/select*/of…`) is no longer treated as a
+  loop; a real collection pipeline still fires. An `Optional` held in a local variable is still
+  read as a stream, which needs the symbol table, and the limit is named in the code.
+
+### Added
+
+- `tests/paths.test.ts` (8 cases) and two `MYB002` regression tests, including a fixture guard in
+  `CleanUserService.java`.
+- A "Run against code that was not written for this tool" section in both READMEs: 195 files across
+  two real gateway modules, 0 findings on one and 3 polling-loop findings in integration tests on
+  the other, plus the gap that remains (no real MyBatis XML mapper has met the `MYB*` rules yet).
+
+## 0.1.0 — 2026-09-20
 
 First public version: the rule engine plus four ways to consume it.
 

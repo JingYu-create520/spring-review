@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: JingYu-create520/spring-review@v0.1.0
+      - uses: JingYu-create520/spring-review@v0.1.1
         with:
           exclude: "**/generated/**"
 ```
