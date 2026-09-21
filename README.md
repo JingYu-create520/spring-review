@@ -1,15 +1,22 @@
 # spring-review
 
-**Git diff in, line-level findings out — for the Spring & MyBatis bugs generic AI code review cannot see.**
+Line-level review of Spring and MyBatis changes. Give it a git diff; get back
+findings with a file, a line number, and the rule that fired.
 
-`@Transactional` that silently does nothing, an N+1 hiding in a `for` loop, a `${}`
-that makes your WHERE clause injectable, a thread pool created per request. These
-are not style problems, they are "works in dev, melts in production" problems, and
-they are invisible to tools tuned on Java syntax rather than Spring *semantics*.
+It exists for the mistakes you have to know Spring to see:
 
-A deterministic rule engine makes the call — offline, no API key, same input every
-time, exact line numbers, unit-testable. An LLM is only ever asked to reword the
-summary, never to decide.
+- `@Transactional` on a method called from inside the same class. The proxy never
+  sees that call, so nothing is transactional. It compiles, it starts, it passes review.
+- `@Transactional` on a method that `throws IOException`. Spring rolls back on
+  RuntimeException only, so a checked exception commits the half-finished write.
+- `orderLineMapper.selectPrice(id)` inside a `for` loop. One query per element.
+- `where name = '${keyword}'` in a Mapper XML. `${}` is string concatenation.
+- `like concat('%', #{kw}, '%')`. A leading `%` is where the index stops helping.
+- `Executors.newFixedThreadPool(8)` called from a singleton bean's method.
+
+Rules make these calls. The engine is offline, needs no API key, and prints the same
+output for the same diff. `--llm` rewrites the summary paragraph and nothing else; a
+test asserts that turning it on cannot move a single finding.
 
 > [中文 README](./README.zh-CN.md) · [Rules](#the-rules-11) · [Why not just ask the model](#why-not-just-ask-the-model) · [Limitations](#what-it-does-not-do)
 
@@ -168,37 +175,36 @@ how to read `findings[]`. Install by copying it into your skills directory.
 
 ## Why not just ask the model
 
-Because a model reading a diff cannot tell you *which line* to open, cannot promise
-the same answer twice, and has no idea that your `ORDER BY ${sortField}` is a
-whitelist problem rather than an injection one.
+Three things a model does not do with a diff. It cannot give you a line number you
+can click. It cannot promise the same answer twice, so it cannot gate a merge. And it
+does not know that `ORDER BY ${sortField}` is a whitelist problem rather than a "use
+`#{}`" one — a column name cannot be bound, so the obvious advice is the wrong advice.
 
-The split is deliberate:
-
-- **Rules own the conclusions.** Every finding has an id, an evidence snippet, a
-  line in HEAD and a suggested fix. Unit-tested, reproducible, runs on a plane.
-- **The LLM owns the prose.** `--llm` rewrites the summary paragraph against any
-  OpenAI-compatible endpoint (`SR_LLM_BASE_URL` / `SR_LLM_API_KEY` /
-  `SR_LLM_MODEL`). A test asserts the finding set is byte-identical with it on or
-  off, and an unreachable endpoint degrades to the offline template instead of
-  failing your build.
+So rules produce the findings. Each carries an id, the evidence, a line in HEAD, a
+suggestion, and a unit test. `--llm` is for the summary paragraph only, against any
+OpenAI-compatible endpoint (`SR_LLM_BASE_URL` / `SR_LLM_API_KEY` / `SR_LLM_MODEL`).
+`tests/cli.test.ts` checks that the JSON report is byte-identical with `--llm` on or
+off, and that an unreachable endpoint returns the offline template plus a note instead
+of failing the build.
 
 ## What it does not do
 
-Written to be honest about its edge, because a review tool earns or loses its
-reputation on false positives:
+There is no compiler and no classpath here. Structure comes from a bracket state
+machine running over a copy of the file with comments and string literals blanked
+out, so it cannot see cross-file bean wiring, custom meta-annotations like
+`@MyService`, or classes registered through `@Bean`.
 
-- **No compiler, no classpath.** Structure comes from a bracket state machine over a
-  comment/string-masked copy of the file, so cross-file bean wiring, custom
-  meta-annotations (`@MyService`) and `@Bean`-registered classes are invisible.
-- **It skips instead of guessing.** Unparseable structure, or a `--patch` whose file
-  you do not have locally, means the context-hungry rules stay quiet and say so
-  under `skipped`. Token-level `${}` detection still works on fragments.
-- **`suppress` is available but blunt**: `// spring-review:disable SPR001 "reason"`
-  on the offending line or the line above, `disable-file` for a whole file,
-  `.spring-review.json` to turn rules off per repo.
-- **Not a replacement for SonarQube or Checkstyle.** It does not look for code smell
-  or formatting; it looks for the Spring/MyBatis mistakes those do not check, at
-  diff time, in seconds.
+When structure does not resolve, the rule stays quiet. That happens on Java it cannot
+follow, and on `--patch` input where the file is not on your disk: the
+context-hungry rules skip and record why under `skipped`, while `${}` detection still
+works because one line is enough to judge it.
+
+To silence a finding, put `// spring-review:disable SPR001 "reason"` on the offending
+line or the line above, use `disable-file` for a whole file, or turn rules off per
+repo in `.spring-review.json`.
+
+It is not SonarQube and it is not Checkstyle. Formatting and code smell are not what
+it looks at.
 
 ## Development
 
