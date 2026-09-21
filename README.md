@@ -17,7 +17,7 @@ It exists for the mistakes you have to know Spring to see:
 Rules make these calls, offline and without an API key, so the same diff gives the
 same output. `--llm` rewrites the summary paragraph and nothing else.
 
-![spring-review reviewing examples/demo-project: 6 errors and 2 warnings, each with a rule id, a line number, the offending code and a fix](./docs/assets/demo.png)
+![spring-review reviewing two files of examples/demo-project: 6 errors and 2 warnings, each with a rule id, a line number, the offending code and a fix](./docs/assets/demo.png)
 
 > [中文 README](./README.zh-CN.md) · [Rules](#rules) · [Why not just ask the model](#why-not-just-ask-the-model) · [What it does not do](#what-it-does-not-do)
 
@@ -44,8 +44,15 @@ spring-review                              # uncommitted changes
 spring-review --diff origin/main..HEAD     # a commit range
 spring-review --staged
 spring-review --file src/main/java/demo/UserService.java
+spring-review src/main/java                # a directory, recursively
+spring-review "src/**/*Service.java"       # or a glob
 spring-review --patch pr.patch --format github
 ```
+
+A path may be a file, a directory or a glob; `target/`, `build/`, `node_modules/`
+and `generated/` are never walked. An input that yields nothing reviewable is
+named in the output rather than passing quietly — a linter that reports "clean"
+over zero files is worse than one that fails.
 
 Only added lines are reported, so existing code does not come back to haunt you.
 Other flags: `--min-severity error|warn|info`, `--exclude '**/generated/**'`,

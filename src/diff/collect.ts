@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { opendir, readFile, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
-import { normalizeNewlines, matchesAny } from "../util/text.js";
+import { globToRegExp, normalizeNewlines, matchesAny } from "../util/text.js";
 import { reconstructFile, type DiffFile } from "./parse.js";
 import { readAtRef } from "./git.js";
 import type { ContentSource, ReviewUnit } from "../types.js";
@@ -28,6 +28,94 @@ export function isReviewable(path: string): boolean {
   if (/[\\/](?:target|build|out|node_modules|generated)[\\/]/i.test(path)) return false;
   if (/[\\/]\.min\.[a-z]+$/i.test(path)) return false;
   return true;
+}
+
+/** Directories never worth descending into, matched against the relative path. */
+const PRUNED_DIR = /(?:^|\/)(?:target|build|out|node_modules|generated|\.git)(?:\/|$)/i;
+
+/** Every reviewable file under `dirRel` (relative to `cwd`, posix separators). */
+async function walkDir(dirRel: string, cwd: string): Promise<string[]> {
+  const found: string[] = [];
+  const stack: string[] = [dirRel === "." ? "" : dirRel];
+  while (stack.length > 0) {
+    const cur = stack.pop() as string;
+    let entries: Awaited<ReturnType<typeof opendir>>;
+    try {
+      entries = await opendir(cur === "" ? cwd : join(cwd, ...cur.split("/")));
+    } catch {
+      continue; // unreadable subtree: skip it rather than failing the whole run
+    }
+    for await (const entry of entries) {
+      const rel = cur === "" ? entry.name : `${cur}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (!PRUNED_DIR.test(rel)) stack.push(rel);
+      } else if (entry.isFile() && isReviewable(rel)) {
+        found.push(rel);
+      }
+    }
+  }
+  return found;
+}
+
+function hasGlob(s: string): boolean {
+  return /[*?[]/.test(s);
+}
+
+/**
+ * Turn whatever the user passed — files, directories, or globs — into a
+ * de-duplicated list of reviewable relative paths.
+ *
+ * This exists because whole-file mode used to hand a directory straight to
+ * `unitFromFile`, which returned null, so `spring-review src/` reported a clean
+ * run over zero files. A linter that silently passes is worse than one that
+ * errors, so an input that yields nothing is now always named in `skipped`.
+ */
+export async function expandReviewInputs(
+  paths: string[],
+  cwd: string,
+  exclude: string[] = [],
+): Promise<{ files: string[]; skipped: Array<{ path: string; reason: string }> }> {
+  const files = new Set<string>();
+  const skipped: Array<{ path: string; reason: string }> = [];
+
+  for (const raw of paths) {
+    const rel = raw.split(sep).join("/").replace(/^\.\//, "").replace(/\/+$/, "");
+    if (rel === "" || rel === ".") {
+      for (const f of await walkDir(".", cwd)) files.add(f);
+      continue;
+    }
+
+    if (hasGlob(rel)) {
+      const wildcard = /[?*[]/.exec(rel)!.index;
+      const dirEnd = rel.lastIndexOf("/", wildcard);
+      const base = dirEnd === -1 ? "." : rel.slice(0, dirEnd);
+      const pattern = globToRegExp(rel);
+      const hit = (await walkDir(base, cwd)).filter((f) => pattern.test(f));
+      if (hit.length === 0) skipped.push({ path: raw, reason: "no .java/.xml file matched this pattern" });
+      for (const f of hit) files.add(f);
+      continue;
+    }
+
+    const st = await stat(join(cwd, ...rel.split("/")).replace(/\\/g, sep)).catch(() => null);
+    if (st === null) {
+      skipped.push({ path: raw, reason: "not readable" });
+      continue;
+    }
+    if (st.isDirectory()) {
+      const hit = await walkDir(rel, cwd);
+      if (hit.length === 0) skipped.push({ path: raw, reason: "no .java/.xml file under this directory" });
+      for (const f of hit) files.add(f);
+      continue;
+    }
+    if (!isReviewable(rel)) {
+      skipped.push({ path: raw, reason: "not a .java/.xml file" });
+      continue;
+    }
+    files.add(rel);
+  }
+
+  const kept = [...files].filter((f) => !(exclude.length > 0 && matchesAny(f, exclude))).sort();
+  return { files: kept, skipped };
 }
 
 /**

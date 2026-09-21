@@ -14,7 +14,7 @@
 判定由规则做出，离线、不需要 API key，所以同一份 diff 永远得到同一份结果。
 `--llm` 只改总结那一段文字。
 
-![spring-review 审查 examples/demo-project：6 个 error、2 个 warn，每条都带规则号、行号、证据代码和改法](./docs/assets/demo.png)
+![spring-review 审查 examples/demo-project 的两个文件：6 个 error、2 个 warn，每条都带规则号、行号、证据代码和改法](./docs/assets/demo.png)
 
 > [English README](./README.md) · [规则](#规则) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么)
 
@@ -40,8 +40,14 @@ spring-review                              # 工作区未提交变更
 spring-review --diff origin/main..HEAD     # 指定提交范围
 spring-review --staged
 spring-review --file src/main/java/demo/UserService.java
+spring-review src/main/java                # 整个目录，递归
+spring-review "src/**/*Service.java"       # 或者 glob
 spring-review --patch pr.patch --format github
 ```
+
+路径可以是文件、目录或 glob；`target/`、`build/`、`node_modules/`、`generated/` 不会被遍历。
+一个输入如果没匹配到任何可审查文件，会在输出里点名说明，而不是安静地通过——
+"扫了 0 个文件然后报告一切正常"的静态检查，比直接报错更糟。
 
 只报新增行上的问题，存量代码不会翻出来骚扰你。
 其他参数：`--min-severity error|warn|info`、`--exclude '**/generated/**'`、

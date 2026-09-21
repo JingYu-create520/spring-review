@@ -1,5 +1,5 @@
 import { getDiff, type DiffSource } from "./diff/git.js";
-import { unitsFromDiff, unitFromFile } from "./diff/collect.js";
+import { unitsFromDiff, unitFromFile, expandReviewInputs } from "./diff/collect.js";
 import { attachCompanions, buildNamespaceIndex } from "./diff/companion.js";
 import { reviewUnits } from "./rules/engine.js";
 import { rules as allRules, listRules } from "./rules/index.js";
@@ -47,7 +47,7 @@ export async function reviewDiff(
   return { ...result, skipped: [...skipped, ...result.skipped] };
 }
 
-/** Whole-file mode: every line is reportable. */
+/** Whole-file mode: every line is reportable. Paths may be files, directories or globs. */
 export async function reviewPaths(
   paths: string[],
   cwd: string,
@@ -55,12 +55,12 @@ export async function reviewPaths(
   rules = allRules,
 ): Promise<ReviewResult> {
   const merged = { ...DEFAULT_OPTIONS, ...options };
+  const { files, skipped } = await expandReviewInputs(paths, cwd, merged.exclude);
   const units: ReviewUnit[] = [];
-  const skipped: ReviewResult["skipped"] = [];
-  for (const path of paths) {
+  for (const path of files) {
     const unit = await unitFromFile(path, cwd);
     if (!unit) {
-      skipped.push({ path, reason: "not readable or not a .java/.xml file" });
+      skipped.push({ path, reason: "unreadable" });
       continue;
     }
     units.push(unit);
