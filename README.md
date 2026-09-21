@@ -18,12 +18,11 @@ Rules make these calls. The engine is offline, needs no API key, and prints the 
 output for the same diff. `--llm` rewrites the summary paragraph and nothing else; a
 test asserts that turning it on cannot move a single finding.
 
-> [中文 README](./README.zh-CN.md) · [Rules](#the-rules-11) · [Why not just ask the model](#why-not-just-ask-the-model) · [Limitations](#what-it-does-not-do)
-
 ![spring-review reviewing examples/demo-project: 6 errors and 2 warnings, each with a rule id, a line number, the offending code and a fix](./docs/assets/demo.png)
 
-*That is `examples/demo-project` in this repo — one command, no API key, no network.
-Every finding carries a rule id, a line number in HEAD, the evidence, and how to fix it.*
+*Run against `examples/demo-project` in this repo. No API key, no network.*
+
+> [中文 README](./README.zh-CN.md) · [Rules](#the-rules-11) · [Why not just ask the model](#why-not-just-ask-the-model) · [Limitations](#what-it-does-not-do)
 
 Exit code is the CI contract: **0** nothing blocking, **1** at least one `error`,
 **2** the tool could not run.
@@ -71,6 +70,7 @@ and every command below keeps working unchanged.
 **1 · CLI, before you commit**
 
 ```bash
+# until the package is published, treat spring-review as an alias for: node dist/cli.js
 spring-review                             # uncommitted changes
 spring-review --diff origin/main..HEAD    # a range
 spring-review --staged
@@ -118,15 +118,7 @@ you can see live alerts before trusting it on your own code.
 
 **3 · MCP server, for your coding agent**
 
-```json
-{
-  "mcpServers": {
-    "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
-  }
-}
-```
-
-Works today without npm, pointing at your clone:
+Point it at your clone (works today):
 
 ```json
 {
@@ -135,6 +127,16 @@ Works today without npm, pointing at your clone:
       "command": "node",
       "args": ["/path/to/spring-review/dist/cli.js", "mcp"]
     }
+  }
+}
+```
+
+Once the package is on npm:
+
+```json
+{
+  "mcpServers": {
+    "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
   }
 }
 ```

@@ -1,20 +1,24 @@
 # spring-review
 
-**git diff 进,行级问题评论出 —— 专查通用 AI code review 看不见的 Spring / MyBatis 坑。**
+对 Spring / MyBatis 的改动做行级审查。给它一个 git diff，它返回带文件、行号、规则号的问题列表。
 
-`@Transactional` 写了等于没写、`for` 循环里藏着的 N+1、`${}` 让 WHERE 变成可注入、
-每次请求 new 一个线程池。这些都不是代码风格问题,是"测试环境好好的、上线就炸"的问题,
-而按 Java 语法而不是按 Spring 语义做判断的工具根本看不见它们。
+它处理的是那些**得懂 Spring 才看得见**的问题：
 
-判定全部由确定性规则引擎完成:离线、不需要 API key、同样输入永远同样输出、行号精确、可单测。
-LLM 只允许改写总结文案,不参与任何判定。
+- 同类里调用的方法带 `@Transactional`。代理拦不到自调用，事务等于没开。编译通过、启动正常、review 也过得去。
+- 方法 `throws IOException` 却只写了 `@Transactional`。Spring 默认只回滚 RuntimeException，受检异常抛出后半截写入会被提交。
+- `for` 循环里 `orderLineMapper.selectPrice(id)`。一个元素一次查询。
+- Mapper XML 里 `where name = '${keyword}'`。`${}` 是字符串拼接。
+- `like concat('%', #{kw}, '%')`。前导 `%` 就是索引起作用的地方。
+- 单例 Bean 的方法里 `Executors.newFixedThreadPool(8)`。
 
-> [English README](./README.md) · [规则清单](#规则清单11-条) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么写在明面上)
+判定由规则做出。引擎离线运行、不需要 API key、同样的 diff 输出同样的结果。
+`--llm` 只改总结那一段文字，测试锁住了"开与不开不会挪动任何一条发现"。
 
 ![spring-review 审查 examples/demo-project：6 个 error、2 个 warn，每条都带规则号、行号、证据代码和改法](./docs/assets/demo.png)
 
-*图里跑的就是本仓库的 [`examples/demo-project`](./examples/demo-project)：一条命令、不需要 API key、
-不联网。每条发现都带规则号、HEAD 里的行号、证据代码，以及怎么改。*
+*跑的就是本仓库的 `examples/demo-project`。不需要 API key，不联网。*
+
+> [English README](./README.md) · [规则清单](#规则清单11-条) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么写在明面上)
 
 退出码就是 CI 契约:**0** 无阻塞问题,**1** 存在 error 级发现,**2** 工具自身没跑起来。
 
@@ -58,6 +62,7 @@ node /路径/spring-review/dist/cli.js --file src/main/java/demo/UserService.jav
 **1 · CLI:提交前自查**
 
 ```bash
+# 包发布之前，把 spring-review 当作 node dist/cli.js 的别名
 spring-review                             # 工作区未提交变更
 spring-review --diff origin/main..HEAD    # 指定范围
 spring-review --staged
@@ -106,15 +111,7 @@ job 变红，跟退出码无关。
 
 **3 · MCP server:让编码 Agent 自己审自己**
 
-```json
-{
-  "mcpServers": {
-    "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
-  }
-}
-```
-
-npm 没发也能用，直接指到你 clone 的那份：
+指到你 clone 的那份（现在就能用）：
 
 ```json
 {
@@ -123,6 +120,16 @@ npm 没发也能用，直接指到你 clone 的那份：
       "command": "node",
       "args": ["/路径/spring-review/dist/cli.js", "mcp"]
     }
+  }
+}
+```
+
+等包发到 npm 之后：
+
+```json
+{
+  "mcpServers": {
+    "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
   }
 }
 ```

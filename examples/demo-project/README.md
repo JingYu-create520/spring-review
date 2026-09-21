@@ -2,7 +2,7 @@
 
 A small, deliberately ordinary Spring Boot + MyBatis project: orders, stock,
 price rules. Nothing here is labelled with a rule id, because real code never is.
-Six of its classes contain the mistakes this tool exists to catch; two files
+Five of its files contain the mistakes this tool exists to catch; two files
 (`PriceCalculator.java`, `PriceRuleMapper.xml`) are written the right way and must
 come back silent.
 
