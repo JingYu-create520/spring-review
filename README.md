@@ -14,77 +14,56 @@ It exists for the mistakes you have to know Spring to see:
 - `like concat('%', #{kw}, '%')`. A leading `%` is where the index stops helping.
 - `Executors.newFixedThreadPool(8)` called from a singleton bean's method.
 
-Rules make these calls. The engine is offline, needs no API key, and prints the same
-output for the same diff. `--llm` rewrites the summary paragraph and nothing else; a
-test asserts that turning it on cannot move a single finding.
+Rules make these calls, offline and without an API key, so the same diff gives the
+same output. `--llm` rewrites the summary paragraph and nothing else.
 
 ![spring-review reviewing examples/demo-project: 6 errors and 2 warnings, each with a rule id, a line number, the offending code and a fix](./docs/assets/demo.png)
 
-*Run against `examples/demo-project` in this repo. No API key, no network.*
+> [中文 README](./README.zh-CN.md) · [Rules](#rules) · [Why not just ask the model](#why-not-just-ask-the-model) · [What it does not do](#what-it-does-not-do)
 
-> [中文 README](./README.zh-CN.md) · [Rules](#the-rules-11) · [Why not just ask the model](#why-not-just-ask-the-model) · [Limitations](#what-it-does-not-do)
-
-Exit code is the CI contract: **0** nothing blocking, **1** at least one `error`,
-**2** the tool could not run.
-
-### See it on code that isn't a test fixture
-
-[`examples/demo-project`](./examples/demo-project) is a small, deliberately ordinary
-Spring Boot + MyBatis app — orders, stock, price rules — with the mistakes planted
-where they occur in real projects and no `// SPR001 here` labels. Two files in it are
-written the right way and must come back silent; `tests/demo-project.test.ts` fails
-CI if any of that stops being true.
-
-```bash
-node dist/cli.js --cwd examples/demo-project --experimental \
-  --file $(cd examples/demo-project && find src -name '*.java' -o -name '*.xml')
-```
-
-20 findings, all 11 rules represented, zero on the clean files. The table in that
-folder explains why each planted case is worth a rule.
+Exit codes: `0` nothing blocking, `1` at least one error-severity finding, `2` the
+tool could not run.
 
 ## Install
 
-The npm package is not published yet, so today you run it from a clone — it takes
-about 30 seconds and needs nothing but Node 20+:
+The npm package is not published yet, so run it from a clone. Node 20 or newer.
 
 ```bash
 git clone https://github.com/JingYu-create520/spring-review.git
 cd spring-review
 npm ci && npm run build
-node dist/cli.js --patch examples/sample.patch     # try it on our demo diff
+node dist/cli.js --patch examples/sample.patch
 ```
 
-Reviewing your own project, from inside it:
+Below, `spring-review` means `node /path/to/spring-review/dist/cli.js`.
+
+## Usage
 
 ```bash
-node /path/to/spring-review/dist/cli.js --diff HEAD~1..HEAD
-node /path/to/spring-review/dist/cli.js --file src/main/java/demo/UserService.java
-```
-
-Once the package is on npm this becomes `npm i -D spring-review` / `npx spring-review`,
-and every command below keeps working unchanged.
-
-## Four ways to use it
-
-**1 · CLI, before you commit**
-
-```bash
-# until the package is published, treat spring-review as an alias for: node dist/cli.js
-spring-review                             # uncommitted changes
-spring-review --diff origin/main..HEAD    # a range
+spring-review                              # uncommitted changes
+spring-review --diff origin/main..HEAD     # a commit range
 spring-review --staged
 spring-review --file src/main/java/demo/UserService.java
 spring-review --patch pr.patch --format github
 ```
 
-**2 · GitHub Action, on every PR**
+Only added lines are reported, so existing code does not come back to haunt you.
+Other flags: `--min-severity error|warn|info`, `--exclude '**/generated/**'`,
+`--disable SPR005`, `--experimental`, `--list-rules`. A repo can keep its own
+settings in `.spring-review.json` (`exclude`, `disable`, `minSeverity`).
 
-*(needs the npm package, so it lights up the day it is published — until then run
-the CLI in a plain `script:` step against your clone)*
+To silence one finding, say why:
+
+```java
+// spring-review:disable MYB001 "sortField 来自服务端白名单映射"
+```
+
+That works on the offending line or the line above it; `disable-file` covers a whole
+file.
+
+### GitHub Action
 
 ```yaml
-# .github/workflows/spring-review.yml
 on: [pull_request]
 permissions: { contents: read, checks: write }
 jobs:
@@ -98,14 +77,18 @@ jobs:
           exclude: "**/generated/**"
 ```
 
-Findings land as check-run annotations, i.e. inline comments on the diff, with no
-API token and no comment threads to de-duplicate. Set `fail-on-error: false` to
-annotate without blocking — it emits the same annotations at `notice` level, since
-a `::error` workflow command fails the job on its own no matter what the exit code is.
+Findings arrive as check-run annotations, which is why there is no token to hand
+over and no comment thread to de-duplicate. `fail-on-error: false` keeps the job
+green and still marks the lines; it does that by re-emitting at `notice` level,
+because a `::error` workflow command fails the run whatever the exit code says.
 
-**2b · GitHub Code Scanning** — `--format sarif` emits SARIF 2.1.0 with all 11 rule
-descriptions embedded, so findings become persistent alerts on the Security tab
-instead of annotations that scroll away:
+The Action pulls the CLI from npm, so it needs the package published. Until then, a
+`script:` step over a clone does the same job.
+
+### Code scanning
+
+`--format sarif` writes SARIF 2.1.0 with all rule descriptions embedded, so findings
+sit on the Security tab instead of scrolling past:
 
 ```yaml
 - run: spring-review --diff origin/main..HEAD --format sarif > spring-review.sarif
@@ -113,12 +96,10 @@ instead of annotations that scroll away:
   with: { sarif_file: spring-review.sarif, category: spring-review }
 ```
 
-This repo does exactly that against `tests/fixtures` on every push to `main`, so
-you can see live alerts before trusting it on your own code.
+This repo runs it against its own fixtures on every push to `main`; the Security tab
+currently holds 22 alerts.
 
-**3 · MCP server, for your coding agent**
-
-Point it at your clone (works today):
+### MCP server
 
 ```json
 {
@@ -131,101 +112,98 @@ Point it at your clone (works today):
 }
 ```
 
-Once the package is on npm:
+Three tools: `review_diff` (patch text, or a range plus a `cwd`), `review_file`,
+`list_rules`. `skills/spring-review/SKILL.md` is the same knowledge aimed at agents
+that read skills instead of speaking MCP.
 
-```json
-{
-  "mcpServers": {
-    "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
-  }
-}
-```
+## Rules
 
-Tools: `review_diff` (patch text or a git range), `review_file`, `list_rules`.
-The agent writes the Spring code, runs the review itself, and fixes what it broke —
-with no model call inside the judgement, so results are reproducible.
+`spring-review --list-rules` prints these with rationale, machine-readable.
 
-**4 · Agent Skill**
-
-`skills/spring-review/SKILL.md` teaches a skill-aware agent when to run the CLI and
-how to read `findings[]`. Install by copying it into your skills directory.
-
-## The rules (11)
-
-`spring-review --list-rules` prints them with rationale text, machine-readable.
-
-### Spring
-
-| ID | Catches | Severity |
+| ID | Catches | Sev |
 | --- | --- | --- |
-| **SPR001** | `@Transactional` self-invocation: the proxy never sees `this.m()` or a bare `m()` | error |
-| **SPR002** | `@Transactional` on a method that `throws` a checked exception with no `rollbackFor` — the half-finished write commits | error |
-| **SPR003** | `@Async` / `@Scheduled` that can never fire: non-public, static, self-invoked, or `@Scheduled` with arguments | error |
-| **SPR004** | `new Thread(...)` / `Executors.newXxx(...)` inside a singleton bean — unbounded threads, no graceful shutdown | error |
-| **SPR005** | mutable instance state written from unguarded methods (behind `--experimental`) | warn |
-| **SPR006** | `@Cacheable` bypassed by a self-call, or keyed by all arguments with no `key` | warn |
+| SPR001 | `@Transactional` self-invocation, by `this.m()` or a bare `m()` | error |
+| SPR002 | `@Transactional` with a checked exception and no `rollbackFor` | error |
+| SPR003 | `@Async`/`@Scheduled` that cannot apply: non-public, static, self-invoked, or `@Scheduled` with arguments | error |
+| SPR004 | `new Thread` / `Executors.newXxx` inside a singleton bean | error |
+| SPR005 | mutable instance state written from unguarded methods (`--experimental`) | warn |
+| SPR006 | `@Cacheable` bypassed by a self-call, or keyed by every argument | warn |
+| MYB001 | `${}` interpolation in mapper XML and `@Select` SQL | error |
+| MYB002 | N+1: mapper call in a loop or stream, or a `resultMap` nested select | error |
+| MYB003 | leading-wildcard `LIKE`, as a literal, via `concat`, or via `<bind>` | warn |
+| MYB004 | `SELECT *` | warn |
+| MYB005 | `SELECT` with no `WHERE` and no `LIMIT` | error |
 
-### MyBatis
+Three of those are less obvious than they look, and they are the reason the rule set
+is small.
 
-| ID | Catches | Severity |
-| --- | --- | --- |
-| **MYB001** | `${}` string interpolation in mapper XML **and** `@Select` SQL. MyBatis-Plus `${ew.customSqlSegment}` and dynamic `ORDER BY` become `warn` with a whitelist suggestion instead of noise | error |
-| **MYB002** | N+1: a mapper call inside `for` / `while` / `forEach` / `stream().map()`, or a `resultMap` nested `<association select>` | error |
-| **MYB003** | leading-wildcard `LIKE` — the literal, the `concat('%', #{x}, '%')` and the `<bind value="'%' + …">` forms | warn |
-| **MYB004** | `SELECT *` (never `count(*)`) | warn |
-| **MYB005** | `SELECT` with no `WHERE` and no `LIMIT`, exempting `IPage` / PageHelper pagination read from the mapper interface | error |
+`${}` cannot simply be reported everywhere. MyBatis-Plus passes whole WHERE clauses
+through `${ew.customSqlSegment}`, and a dynamic `ORDER BY ${sortField}` cannot be
+turned into `#{}` because column names are not bindable. Both drop to `warn` with an
+answer that is actually usable: map the allowed columns server-side and reject
+anything else.
+
+`SELECT` with no `LIMIT` is not always a full-table read. Under MyBatis-Plus the
+interceptor adds pagination and the SQL stays bare, so the rule follows the mapper
+XML's `namespace` to its interface and exempts statements whose parameters take an
+`IPage`/`Page`. Without that step it would flag every paged query in a MyBatis-Plus
+codebase, which is most of them.
+
+A leading-wildcard `LIKE` almost never appears as `'%foo%'` in a mapper, because
+`#{}` cannot sit inside quotes. The real forms are `concat('%', #{kw}, '%')` and
+`<bind value="'%' + kw + '%'/>`. Matching only the literal would make the rule
+quietly useless.
 
 ## Why not just ask the model
 
 Three things a model does not do with a diff. It cannot give you a line number you
 can click. It cannot promise the same answer twice, so it cannot gate a merge. And it
 does not know that `ORDER BY ${sortField}` is a whitelist problem rather than a "use
-`#{}`" one — a column name cannot be bound, so the obvious advice is the wrong advice.
+`#{}`" one.
 
-So rules produce the findings. Each carries an id, the evidence, a line in HEAD, a
-suggestion, and a unit test. `--llm` is for the summary paragraph only, against any
-OpenAI-compatible endpoint (`SR_LLM_BASE_URL` / `SR_LLM_API_KEY` / `SR_LLM_MODEL`).
-`tests/cli.test.ts` checks that the JSON report is byte-identical with `--llm` on or
-off, and that an unreachable endpoint returns the offline template plus a note instead
-of failing the build.
+So rules produce the findings: each has an id, the evidence, a line in HEAD, a
+suggestion, a unit test. `--llm` talks to any OpenAI-compatible endpoint
+(`SR_LLM_BASE_URL`, `SR_LLM_API_KEY`, `SR_LLM_MODEL`) to write the summary paragraph.
+`tests/cli.test.ts` checks the JSON report is byte-identical with it on or off, and
+that an unreachable endpoint yields the offline template rather than a failed build.
 
 ## What it does not do
 
-There is no compiler and no classpath here. Structure comes from a bracket state
-machine running over a copy of the file with comments and string literals blanked
-out, so it cannot see cross-file bean wiring, custom meta-annotations like
-`@MyService`, or classes registered through `@Bean`.
+No compiler, no classpath. Structure comes from a bracket state machine over a copy
+of the file with comments and string literals blanked out, so cross-file bean wiring,
+custom meta-annotations like `@MyService`, and `@Bean`-registered classes are
+invisible to it.
 
-When structure does not resolve, the rule stays quiet. That happens on Java it cannot
-follow, and on `--patch` input where the file is not on your disk: the
-context-hungry rules skip and record why under `skipped`, while `${}` detection still
-works because one line is enough to judge it.
+When structure does not resolve, the rule stays quiet and says so under `skipped`.
+That happens on Java it cannot follow, and on `--patch` input for a file you do not
+have locally; `${}` detection still works there, because one line is enough to judge.
 
-To silence a finding, put `// spring-review:disable SPR001 "reason"` on the offending
-line or the line above, use `disable-file` for a whole file, or turn rules off per
-repo in `.spring-review.json`.
-
-It is not SonarQube and it is not Checkstyle. Formatting and code smell are not what
-it looks at.
+It is not SonarQube and not Checkstyle. Formatting and code smell are not what it
+looks at.
 
 ## Development
 
 ```bash
 npm ci
-npm run typecheck && npm test     # 105 tests: parser, each rule, false-positive guards,
-                                 # CLI, MCP (in-memory + real stdio), golden output
-npm run build                     # dist/cli.js, dist/index.js, dist/mcp/index.js
+npm run typecheck && npm test    # 105 tests
+npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
-Layout: `src/diff` (patch → lines), `src/analyze` (Java / mapper XML structure),
-`src/rules` (11 rules + engine + suppression), `src/report`, `src/llm`, `src/mcp`.
+`examples/demo-project` is a small order/stock app with the same mistakes planted
+without labels, and two files written correctly on purpose.
+`tests/demo-project.test.ts` fails if a rule stops firing there or if a clean file
+starts reporting, which is what keeps the numbers in this file honest.
+
+Layout: `src/diff` (patch → lines), `src/analyze` (Java and mapper XML structure),
+`src/rules` (rules, engine, suppression), `src/report`, `src/llm`, `src/mcp`.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).
 
-## More from this author
+## Also by me
 
-- `sql-index-advisor` — offline index advisor for MySQL / MyBatis
-- `mcp-tool-gateway` — RBAC, audit trail and human-in-the-loop for MCP tool calls
-- `agent-regression` — trace, score and block agent regressions in CI
+- [sql-index-advisor](https://github.com/JingYu-create520/sql-index-advisor) — MySQL/MyBatis index advice from slow logs and mapper XML
+- [mcp-tool-gateway](https://github.com/JingYu-create520/mcp-tool-gateway) — RBAC, audit and human confirmation in front of MCP tool calls
+- [agent-regression](https://github.com/JingYu-create520/agent-regression) — regression tests for agents, in CI
+- [vredis](https://github.com/JingYu-create520/vredis) — a small vector database in Rust that speaks RESP2

@@ -1,84 +1,64 @@
 # spring-review
 
-对 Spring / MyBatis 的改动做行级审查。给它一个 git diff，它返回带文件、行号、规则号的问题列表。
+对 Spring / MyBatis 的改动做行级审查。给它一个 git diff，它返回带文件、行号和规则号的问题列表。
 
-它处理的是那些**得懂 Spring 才看得见**的问题：
+它处理的是那些得懂 Spring 才看得见的问题：
 
 - 同类里调用的方法带 `@Transactional`。代理拦不到自调用，事务等于没开。编译通过、启动正常、review 也过得去。
-- 方法 `throws IOException` 却只写了 `@Transactional`。Spring 默认只回滚 RuntimeException，受检异常抛出后半截写入会被提交。
+- 方法 `throws IOException` 却只写了 `@Transactional`。Spring 默认只回滚 RuntimeException，受检异常抛出后，半截写入会被提交。
 - `for` 循环里 `orderLineMapper.selectPrice(id)`。一个元素一次查询。
 - Mapper XML 里 `where name = '${keyword}'`。`${}` 是字符串拼接。
-- `like concat('%', #{kw}, '%')`。前导 `%` 就是索引起作用的地方。
+- `like concat('%', #{kw}, '%')`。前导 `%` 就是索引失去作用的地方。
 - 单例 Bean 的方法里 `Executors.newFixedThreadPool(8)`。
 
-判定由规则做出。引擎离线运行、不需要 API key、同样的 diff 输出同样的结果。
-`--llm` 只改总结那一段文字，测试锁住了"开与不开不会挪动任何一条发现"。
+判定由规则做出，离线、不需要 API key，所以同一份 diff 永远得到同一份结果。
+`--llm` 只改总结那一段文字。
 
 ![spring-review 审查 examples/demo-project：6 个 error、2 个 warn，每条都带规则号、行号、证据代码和改法](./docs/assets/demo.png)
 
-*跑的就是本仓库的 `examples/demo-project`。不需要 API key，不联网。*
+> [English README](./README.md) · [规则](#规则) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么)
 
-> [English README](./README.md) · [规则清单](#规则清单11-条) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么写在明面上)
-
-退出码就是 CI 契约:**0** 无阻塞问题,**1** 存在 error 级发现,**2** 工具自身没跑起来。
-
-### 别看测试样例,看这个
-
-[`examples/demo-project`](./examples/demo-project) 是一个刻意写得平平无奇的 Spring Boot +
-MyBatis 小工程——订单、库存、价格规则——坑埋在真实代码会长它的地方,没有
-`// 这里触发 SPR001` 这种标签。里面两个文件是照正确写法写的,必须一条不报;
-`tests/demo-project.test.ts` 把这件事钉在 CI 上,哪天不成立了就红。
-
-```bash
-node dist/cli.js --cwd examples/demo-project --experimental \
-  --file $(cd examples/demo-project && find src -name '*.java' -o -name '*.xml')
-```
-
-20 条发现,11 条规则全部有代表,干净文件 0 条。那个目录里的表格逐条解释了每个坑
-为什么值得一条规则。
+退出码：`0` 没有阻塞问题，`1` 存在 error 级发现，`2` 工具自己没跑起来。
 
 ## 安装
 
-npm 包还没发，所以现在从源码跑——只要 Node 20+，30 秒搞定：
+npm 包还没发，所以现在从 clone 跑。需要 Node 20 或更高。
 
 ```bash
 git clone https://github.com/JingYu-create520/spring-review.git
 cd spring-review
 npm ci && npm run build
-node dist/cli.js --patch examples/sample.patch     # 先在我们准备的示例 diff 上试一把
+node dist/cli.js --patch examples/sample.patch
 ```
 
-审自己的项目（在项目根目录里跑）：
+下面出现的 `spring-review`，都当作 `node /路径/spring-review/dist/cli.js`。
+
+## 用法
 
 ```bash
-node /路径/spring-review/dist/cli.js --diff HEAD~1..HEAD
-node /路径/spring-review/dist/cli.js --file src/main/java/demo/UserService.java
-```
-
-等 npm 包发出去后，这里会变成 `npm i -D spring-review` / `npx spring-review`，下面所有命令都不用改。
-
-## 四种用法
-
-**1 · CLI:提交前自查**
-
-```bash
-# 包发布之前，把 spring-review 当作 node dist/cli.js 的别名
-spring-review                             # 工作区未提交变更
-spring-review --diff origin/main..HEAD    # 指定范围
+spring-review                              # 工作区未提交变更
+spring-review --diff origin/main..HEAD     # 指定提交范围
 spring-review --staged
 spring-review --file src/main/java/demo/UserService.java
 spring-review --patch pr.patch --format github
 ```
 
-只报**新增行**上的问题——存量代码不会被翻出来骚扰你,这是它能进日常流程的前提。
+只报新增行上的问题，存量代码不会翻出来骚扰你。
+其他参数：`--min-severity error|warn|info`、`--exclude '**/generated/**'`、
+`--disable SPR005`、`--experimental`、`--list-rules`。仓库级配置放
+`.spring-review.json`（`exclude` / `disable` / `minSeverity`）。
 
-**2 · GitHub Action:PR 自动行级评论**
+要压掉某一条，就把理由写上：
 
-*（这个形态依赖 npm 包，发包当天即可用；在那之前可以在 workflow 里用 `script:` 步骤
-调你 clone 出来的 `dist/cli.js`）*
+```java
+// spring-review:disable MYB001 "sortField 来自服务端白名单映射"
+```
+
+写在问题那一行或它上一行都生效，`disable-file` 管整个文件。
+
+### GitHub Action
 
 ```yaml
-# .github/workflows/spring-review.yml
 on: [pull_request]
 permissions: { contents: read, checks: write }
 jobs:
@@ -92,13 +72,17 @@ jobs:
           exclude: "**/generated/**"
 ```
 
-发现以 check-run annotations 的形式出现在 Files changed 的行上——不需要仓库 token、
-不会刷屏、不用维护评论去重状态。想让 CI 只提示不卡门禁就设 `fail-on-error: false`——
-它会把同样的注解降到 `notice` 级别输出，因为 `::error` 是 workflow 命令，本身就会让
-job 变红，跟退出码无关。
+发现以 check-run annotation 的形式出现，所以不用给 token，也没有需要去重的评论串。
+`fail-on-error: false` 会让 job 保持绿色但照样标出问题——做法是把注解降级成
+`notice`，因为 `::error` 是 workflow 命令，本身就会让这次运行失败，跟退出码无关。
 
-**2b · GitHub Code Scanning** —— `--format sarif` 输出 SARIF 2.1.0，11 条规则的说明
-一起打包进去，于是发现会变成 Security 标签页上**长期存在的告警**，而不是一闪而过的注释：
+Action 内部从 npm 取 CLI，所以要等包发布才能用；在那之前，用 `script:` 步骤调 clone
+出来的那份是同样的效果。
+
+### Code Scanning
+
+`--format sarif` 输出 SARIF 2.1.0，规则说明一起打包进去，于是发现会长期待在 Security
+标签页上，而不是一闪而过：
 
 ```yaml
 - run: spring-review --diff origin/main..HEAD --format sarif > spring-review.sarif
@@ -106,12 +90,9 @@ job 变红，跟退出码无关。
   with: { sarif_file: spring-review.sarif, category: spring-review }
 ```
 
-本仓库每次推 main 就会拿 `tests/fixtures` 这么跑一遍，你可以先在别人的 Security 页上
-看到真实效果，再决定要不要装进自己项目。
+本仓库每次推 main 就会扫自己的 fixtures，Security 页现在有 22 条告警。
 
-**3 · MCP server:让编码 Agent 自己审自己**
-
-指到你 clone 的那份（现在就能用）：
+### MCP server
 
 ```json
 {
@@ -124,95 +105,85 @@ job 变红，跟退出码无关。
 }
 ```
 
-等包发到 npm 之后：
+三个工具：`review_diff`（传 patch 文本，或者 range 加 `cwd`）、`review_file`、
+`list_rules`。`skills/spring-review/SKILL.md` 是给"读 skill 不走 MCP"的 Agent 的同一套东西。
 
-```json
-{
-  "mcpServers": {
-    "spring-review": { "command": "npx", "args": ["-y", "spring-review", "mcp"] }
-  }
-}
-```
+## 规则
 
-工具面:`review_diff`(传 patch 文本或 git range)、`review_file`、`list_rules`。
-Agent 写完 Spring 代码自己跑一遍,把坑改掉的闭环就此成立——而且判定里没有模型调用,
-所以结果可复现。
-
-**4 · Agent Skill**
-
-`skills/spring-review/SKILL.md` 告诉支持 skill 的 Agent 什么时候该跑、怎么读
-`findings[]`,拷进你的 skills 目录即可。
-
-## 规则清单(11 条)
-
-`spring-review --list-rules` 可以直接拿到带说明的机器可读版本。
-
-### Spring
+`spring-review --list-rules` 会连理由一起打出来。
 
 | ID | 查什么 | 级别 |
 | --- | --- | --- |
-| **SPR001** | 事务自调用:`this.m()` 或裸调用不经过代理,通知静默失效 | error |
-| **SPR002** | 方法 `throws` 受检异常却没写 `rollbackFor` —— 默认只回滚 RuntimeException,半截写入会被提交 | error |
-| **SPR003** | `@Async` / `@Scheduled` 永远不生效的几种写法:非 public、static、同类调用、`@Scheduled` 带参数 | error |
-| **SPR004** | 单例 Bean 方法里 `new Thread` / `Executors.newXxx` —— 线程数失控、无拒绝策略、不会优雅关闭 | error |
-| **SPR005** | 单例 Bean 的实例字段被非同步方法写(误报风险高,默认关闭,`--experimental` 打开) | warn |
-| **SPR006** | `@Cacheable` 被自调用绕过;或多参数却没显式 `key` | warn |
+| SPR001 | `@Transactional` 自调用，`this.m()` 或裸调用 | error |
+| SPR002 | `@Transactional` + 受检异常 + 没写 `rollbackFor` | error |
+| SPR003 | 不可能生效的 `@Async`/`@Scheduled`：非 public、static、同类调用、`@Scheduled` 带参数 | error |
+| SPR004 | 单例 Bean 里 `new Thread` / `Executors.newXxx` | error |
+| SPR005 | 实例字段被非同步方法写（`--experimental`） | warn |
+| SPR006 | `@Cacheable` 被自调用绕过，或者所有参数都进 key | warn |
+| MYB001 | `${}` 拼接，XML 与 `@Select` 都扫 | error |
+| MYB002 | N+1：循环或 stream 里调 mapper，`resultMap` 嵌套 select | error |
+| MYB003 | 左通配 `LIKE`，字面量 / `concat` / `<bind>` 三种形态 | warn |
+| MYB004 | `SELECT *` | warn |
+| MYB005 | 没有 `WHERE` 也没有 `LIMIT` 的 `SELECT` | error |
 
-### MyBatis
+有三条比看起来复杂，也正是规则数停在 11 的原因。
 
-| ID | 查什么 | 级别 |
-| --- | --- | --- |
-| **MYB001** | `${}` 拼接,XML 和 `@Select` 注解 SQL 都扫。MyBatis-Plus 的 `${ew.customSqlSegment}`、动态 `ORDER BY` 降为 warn 并给白名单方案,而不是一刀切误报 | error |
-| **MYB002** | N+1:`for` / `while` / `forEach` / `stream().map()` 里调 mapper;`resultMap` 的 `<association select>` 嵌套查询 | error |
-| **MYB003** | 左通配 LIKE —— 字面量 `'%x%'`、`concat('%', #{x}, '%')`、`<bind value="'%' + …">` 三种形态都覆盖(只匹配字面量等于这条规则不存在) | warn |
-| **MYB004** | `SELECT *`(`count(*)` 不会误报) | warn |
-| **MYB005** | 没有 WHERE 也没有 LIMIT 的查询;会从 mapper 接口识别 `IPage` / PageHelper 分页并豁免 | error |
+`${}` 不能一律报 error。MyBatis-Plus 会把整个 WHERE 子句通过
+`${ew.customSqlSegment}` 传进来，而 `ORDER BY ${sortField}` 也改不成 `#{}`——列名不是
+可绑定的参数。这两种都降为 warn，并给出用得上的答案：服务端维护列名白名单，命中不了就报错。
+
+没有 `LIMIT` 的 `SELECT` 不一定是在读全表。MyBatis-Plus 的分页由拦截器注入，SQL 里
+始终是光秃秃的。所以这条规则会顺着 mapper XML 的 `namespace` 找到对应接口，参数里带
+`IPage`/`Page` 的语句直接豁免。少了这一步，一个 MyBatis-Plus 项目里的每个分页查询都会
+被误报，而那样的项目是绝大多数。
+
+左通配 `LIKE` 在真实 mapper 里几乎不会写成 `'%foo%'`，因为 `#{}` 不能放进引号。实际
+形态是 `concat('%', #{kw}, '%')` 和 `<bind value="'%' + kw + '%'/>`。只匹配字面量，
+这条规则等于不存在。
 
 ## 为什么不直接问大模型
 
-因为模型看 diff 给不出**能点开的行号**,不保证两次答案一致,也无从判断你的
-`ORDER BY ${sortField}` 是"该走白名单"而不是"该改成 #{}"。
+模型看 diff 有三件事做不到。给不出能点开的行号。保证不了两次答案一样，所以不能拿来
+卡合并。也不知道 `ORDER BY ${sortField}` 是白名单问题，不是"改成 `#{}`"能解决的。
 
-所以职责是切开的:
+所以结论由规则给出：每条带规则号、证据、HEAD 里的行号、改法，以及一个单元测试。
+`--llm` 接任意 OpenAI 兼容端点（`SR_LLM_BASE_URL`、`SR_LLM_API_KEY`、`SR_LLM_MODEL`），
+只写总结那段。`tests/cli.test.ts` 检查开关 `--llm` 之后 JSON 报告逐字节相同，也检查端点
+连不通时返回离线模板而不是把构建弄失败。
 
-- **规则负责结论。** 每条发现都有规则 ID、证据片段、HEAD 里的行号、修复建议。
-  可单测、可复现、断网可用。
-- **LLM 负责措辞。** `--llm` 接任意 OpenAI 兼容端点(`SR_LLM_BASE_URL` /
-  `SR_LLM_API_KEY` / `SR_LLM_MODEL`),只改总结段落。测试锁死了"开关 --llm 不改变
-  findings 的一个字节";端点不通时降级为离线模板,不会把 CI 弄红。
+## 它做不到什么
 
-## 它做不到什么(写在明面上)
+没有编译器，没有 classpath。结构来自"把注释和字符串掩掉之后的括号状态机"，所以跨文件
+的 Bean 装配、自定义元注解（`@MyService` 这类）、通过 `@Bean` 注册的类，它都看不见。
 
-这类工具的口碑死于误报,所以边界先说清楚:
+结构解析不出来时，规则保持沉默，并在 `skipped` 里说明原因。这发生在它读不懂的 Java
+上，也发生在 `--patch` 指向你本地没有的文件时——那种情况下 `${}` 检测仍然工作，因为
+一行就够判断了。
 
-- **没有编译器、没有 classpath。** 结构来自"注释/字符串掩码 + 括号状态机",
-  所以跨文件的 Bean 装配、自定义元注解(`@MyService`)、`@Bean` 注册的类都看不见。
-- **拿不准就不报。** 结构解析失败、或者 `--patch` 指向的文件本地不存在,
-  依赖上下文的规则会保持沉默并在 `skipped` 里说明原因,而不是猜一个像模像样的结论。
-  `${}` 这种行内可判定的规则在片段上依然工作。
-- **抑制手段是有的但请节制**:`// spring-review:disable SPR001 "原因"` 写在问题行
-  或它上一行都生效;`disable-file` 管整文件;仓库级用 `.spring-review.json`。
-- **不替代 SonarQube / Checkstyle。** 它不查异味、不查格式,只查那两个不查的
-  Spring / MyBatis 语义坑,并且是在 diff 这一步、几秒之内。
+它不是 SonarQube，也不是 Checkstyle。格式和代码异味不是它看的东西。
 
 ## 开发
 
 ```bash
 npm ci
-npm run typecheck && npm test     # 解析器 / 每条规则正负例 / 误报守卫 / CLI /
-                                  # MCP(内存 + 真实 stdio 握手)/ 金样例
-npm run build                     # dist/cli.js, dist/index.js, dist/mcp/index.js
+npm run typecheck && npm test    # 105 个测试
+npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
-目录:`src/diff`(patch → 行号)、`src/analyze`(Java 与 mapper XML 结构)、
-`src/rules`(11 条规则 + 引擎 + 抑制)、`src/report`、`src/llm`、`src/mcp`。
+`examples/demo-project` 是一个订单/库存小工程，同样的坑埋在里面且不带标签，另外有两个
+文件是照正确写法写的。`tests/demo-project.test.ts` 会在某条规则不再命中、或者干净文件
+开始被报的时候让 CI 变红——上面那些数字靠这个才不是空话。
+
+目录：`src/diff`（patch → 行号）、`src/analyze`（Java 与 mapper XML 结构）、
+`src/rules`（规则、引擎、抑制）、`src/report`、`src/llm`、`src/mcp`。
 
 ## 许可
 
-MIT,见 [LICENSE](./LICENSE)。
+MIT，见 [LICENSE](./LICENSE)。
 
-## 同作者的其他项目
+## 我做的其他东西
 
-- `sql-index-advisor` —— MySQL / MyBatis 的离线索引顾问,慢日志进、DDL 建议出
-- `mcp-tool-gateway` —— 给 MCP 工具调用加 RBAC、审计与人机确认
-- `agent-regression` —— Agent 回归测试:trace、评分、卡 PR
+- [sql-index-advisor](https://github.com/JingYu-create520/sql-index-advisor) — 从慢日志和 mapper XML 给 MySQL/MyBatis 索引建议
+- [mcp-tool-gateway](https://github.com/JingYu-create520/mcp-tool-gateway) — 给 MCP 工具调用加 RBAC、审计和人工确认
+- [agent-regression](https://github.com/JingYu-create520/agent-regression) — Agent 回归测试，跑在 CI 里
+- [vredis](https://github.com/JingYu-create520/vredis) — 用 Rust 写的、说 RESP2 的迷你向量库
