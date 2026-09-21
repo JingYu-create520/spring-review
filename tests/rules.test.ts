@@ -103,6 +103,23 @@ describe("SPR rules on the deliberately broken service", () => {
     expect(at).toContain(lineOf(badSrc, "userMapper.insertOne(user)"));
   });
 
+  it("MYB002 still flags a real stream over a collection", () => {
+    const src = `package a;
+import com.example.demo.mapper.OrderMapper;
+class S { private OrderMapper orderMapper;
+  java.util.List<String> load(java.util.List<Long> ids) {
+    return ids.stream().map(id -> orderMapper.selectById(id).getName()).toList();
+  } }
+`;
+    const hit = run([unit("a/S.java", src)]);
+    expect(ruleLines(hit, "MYB002")).toContain(lineOf(src, "orderMapper.selectById(id)"));
+  });
+
+  it("MYB002 does not treat Optional.map as a loop", () => {
+    // A single-row update inside Optional.map fired MYB002 on real gateway code.
+    expect(run([clean]).filter((f) => f.rule === "MYB002")).toEqual([]);
+  });
+
   it("keeps SPR005 out until --experimental is passed", () => {
     expect(findings.some((f) => f.rule === "SPR005")).toBe(false);
     const withExperimental = run([bad], { experimental: true });

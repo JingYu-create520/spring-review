@@ -550,8 +550,41 @@ export interface LoopRange {
 }
 
 /** Outermost iteration bodies inside a member — the N+1 haystack. */
-export function loopRanges(java: JavaFile, member: JavaMember): LoopRange[] {
-  if (member.bodyStart < 0) return [];
+/**
+ * Is the receiver of a `.map(` / `.flatMap(` a call that yields **one** element?
+ *
+ * `Optional.map` runs its lambda at most once, so it is not a per-element loop.
+ * Reading it as one turned a plain single-row update —
+ * `repository.findByName(name).map(existing -> repository.save(existing))`, seen
+ * in a real gateway service — into a reported N+1. Only an explicitly
+ * collection-shaped receiver (`…All`, `…List`, `…Ids`, `.stream()`, `.list()`)
+ * stays in the loop set.
+ *
+ * Known limit: an Optional held in a local variable (`Optional<User> u = …; u.map(…)`)
+ * is still treated as a stream, since resolving it needs the symbol table.
+ */
+function receiverIsSingleResult(text: string, dotIndex: number, bodyStart: number): boolean {
+  let i = dotIndex - 1;
+  while (i > bodyStart && /\s/.test(text[i] as string)) i--;
+  if (text[i] !== ")") return false;
+  let depth = 0;
+  for (let j = i; j > bodyStart; j--) {
+    const ch = text[j];
+    if (ch === ")") depth++;
+    else if (ch === "(") {
+      depth--;
+      if (depth > 0) continue;
+      let k = j - 1;
+      while (k >= 0 && /[\w$.]/.test(text[k] as string)) k--;
+      const callee = text.slice(k + 1, j).split(".").pop() ?? "";
+      if (callee === "") return false;
+      return !/(?:all|list|stream|ids|s)$/i.test(callee) && /^(?:find|get|load|select|query|reference|of)/i.test(callee);
+    }
+  }
+  return false;
+}
+
+export function loopRanges(java: JavaFile, member: JavaMember): LoopRange[] {  if (member.bodyStart < 0) return [];
   const text = java.masked;
   const lines = new LineIndex(java.source);
   const opaque = nestedBodiesWithin(java, member);
@@ -569,6 +602,7 @@ export function loopRanges(java: JavaFile, member: JavaMember): LoopRange[] {
       const at = member.bodyStart + (m.index ?? 0);
       if (at > member.bodyEnd) continue;
       if (hidden(at)) continue;
+      if (kind === "stream" && receiverIsSingleResult(text, at, member.bodyStart)) continue;
       if (covered.some(([a, b]) => at > a && at < b)) continue; // keep outermost only
       const open = text.indexOf("(", at);
       if (open < 0) continue;

@@ -81,4 +81,13 @@ public class CleanUserService {
         List<User> users = userMapper.selectByIds(ids);
         return users.stream().map(User::getName).toList();
     }
+
+    /** Optional.map 只有一个元素,不是 N+1;真实网关代码里被误报过的形状。 */
+    @Transactional
+    public String renameIfPresent(Long id, String name) {
+        return userMapper.selectByIdOptional(id).map(user -> {
+            user.setName(name);
+            return userMapper.updateName(user.getId(), name);
+        }).orElse("");
+    }
 }
