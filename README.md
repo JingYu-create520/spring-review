@@ -174,6 +174,25 @@ suggestion, a unit test. `--llm` talks to any OpenAI-compatible endpoint
 `tests/cli.test.ts` checks the JSON report is byte-identical with it on or off, and
 that an unreachable endpoint yields the offline template rather than a failed build.
 
+## Run against code that was not written for this tool
+
+The demo project is a fixture: on its own it only proves the rules fire when told
+to. Two real Spring gateway modules were scanned in whole-directory mode — 195
+Java files, nothing planted in them for this tool:
+
+| Module | Files | Findings | What they were |
+|---|---|---|---|
+| gateway service | 107 | 0 | clean at `--min-severity info` |
+| multi-module gateway | 88 | 3 | queries inside polling loops in `*IT.java` — real per-iteration round trips, but intentional in a test |
+
+That pass is also where this release's two fixes came from: a directory argument
+reported a clean run over zero files, and
+`repository.findByName(name).map(e -> repository.save(e))` was read as an N+1 even
+though the `Optional` runs once. Both are pinned by tests now.
+
+What this does **not** yet prove: a codebase with MyBatis XML mappers. Neither
+module has one, so the `MYB*` rules on real code still rest on the fixture.
+
 ## What it does not do
 
 No compiler, no classpath. Structure comes from a bracket state machine over a copy
