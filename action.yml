@@ -32,15 +32,18 @@ inputs:
     default: "true"
   install-from:
     description: >-
-      github — install this repository with npx (works today, no npm package
-      needed); npm — install the published spring-review package;
-      local — run the dist/ of this checkout, used by the repo's own CI.
+      github — download the prebuilt CLI from this repository's Releases (the
+      default, and no npm package needed); npm — install the published
+      spring-review package once it exists; local — run the dist/ of this
+      checkout, used by the repository's own CI.
     required: false
     default: github
   ref:
-    description: Tag or commit to install in github mode, or package version in npm mode.
+    description: >-
+      github mode: "latest" for the newest Release, a release tag such as v0.1.3,
+      or a full tarball URL. npm mode: a package version. Ignored by local mode.
     required: false
-    default: v0
+    default: latest
   token:
     description: Optional GITHUB_TOKEN; only needed for a private package in npm mode.
     required: false
@@ -90,8 +93,15 @@ runs:
         fi
         if [ "$SR_EXPERIMENTAL" = "true" ]; then ARGS+=(--experimental); fi
 
-        # `github` is the default because the npm package is not published: npx can
-        # install straight from this repository, and the `prepare` script builds dist/.
+        # `github` is the default because the npm package is not published. It
+        # fetches the prebuilt tarball from Releases rather than `npx github:…`:
+        # a git install has to run `prepare` on somebody else's runner — whole
+        # devDependency tree, and if dist/ ever fails to build the bin goes
+        # missing and npx answers 127 — while a Release asset is one download of
+        # something that was already built and tested. `JingYu-create520/…` is
+        # hardcoded because this file ships with that repository; a fork changes
+        # one line, or passes `ref: <full tarball URL>`.
+        SR_REPO="JingYu-create520/spring-review"
         case "$SR_INSTALL_FROM" in
           local)
             OUT=$(node "${GITHUB_ACTION_PATH}/dist/cli.js" "${ARGS[@]}")
@@ -100,7 +110,32 @@ runs:
             OUT=$(npx --yes "spring-review@${SR_REF}" "${ARGS[@]}")
             ;;
           github)
-            OUT=$(npx --yes "github:JingYu-create520/spring-review#${SR_REF}" "${ARGS[@]}")
+            case "$SR_REF" in
+              *://*) SR_URL="$SR_REF" ;;
+              latest) SR_URL="https://github.com/${SR_REPO}/releases/latest/download/spring-review.tgz" ;;
+              *) SR_URL="https://github.com/${SR_REPO}/releases/download/${SR_REF}/spring-review.tgz" ;;
+            esac
+            # Install in a throwaway directory, never in $GITHUB_WORKSPACE: npm
+            # would otherwise see the reviewed project's own package.json and
+            # start resolving its dependency tree.
+            SR_HOME="${RUNNER_TEMP:-$(mktemp -d)}/spring-review-cli"
+            rm -rf "$SR_HOME"
+            mkdir -p "$SR_HOME"
+            # npm looks upwards for a project root; give it one so it cannot find
+            # something belonging to whoever is running this.
+            printf '{"name":"spring-review-action-install","private":true,"version":"0.0.0"}\n' > "$SR_HOME/package.json"
+            if ! SR_INSTALL=$(cd "$SR_HOME" && npm install --no-save --no-audit --no-fund --ignore-scripts "$SR_URL" 2>&1); then
+              printf '%s\n' "$SR_INSTALL"
+              echo "::error::could not install spring-review from ${SR_URL}"
+              exit 2
+            fi
+            SR_CLI="${SR_HOME}/node_modules/spring-review/dist/cli.js"
+            if [ ! -f "$SR_CLI" ]; then
+              echo "::error::${SR_URL} installed without dist/cli.js — the Release asset was packed from an unbuilt tree"
+              exit 2
+            fi
+            echo "spring-review $(node "$SR_CLI" --version 2>/dev/null) from ${SR_URL}"
+            OUT=$(node "$SR_CLI" "${ARGS[@]}")
             ;;
           *)
             echo "::error::install-from must be github, npm or local (got '$SR_INSTALL_FROM')"

@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.3 — 2026-09-22
+
+### Fixed
+
+- **The Action's `install-from: github` path did not run.** It used
+  `npx github:JingYu-create520/spring-review#v0`, which asks every consumer's
+  runner to build `dist/` from the devDependency tree first. CI run #20 showed
+  what happens when that build does not happen: npx installs the package, finds
+  no file behind the `bin`, and answers `spring-review: not found` with exit
+  127. github mode now downloads a prebuilt tarball from Releases and runs
+  `dist/cli.js` with node — nothing is built on your runner.
+- **`--version` could disagree with the release.** `src/version.ts` carried the
+  version by hand, and the 0.1.3 bump left it at 0.1.2 — visible when a local
+  end-to-end run of the Action printed `spring-review 0.1.2` out of a
+  `spring-review-0.1.3.tgz`. The test comparing the two existed all along and
+  simply had not been run since the bump. `npm version` now rewrites it through
+  the `version` lifecycle (`scripts/sync-version.mjs`), so the string and the tag
+  move together.
+
+### Added
+
+- `install-from` (`github` | `npm` | `local`) and `ref` inputs, defaulting to
+  `github` + `latest`, so the Action works with no npm package published. `ref`
+  also takes a full tarball URL, which is what a fork needs.
+- `.github/workflows/release.yml`: pushing a `v*.*` tag packs the CLI, verifies
+  the tarball really contains an executable `dist/cli.js`, and attaches it as
+  `spring-review.tgz`. A stable asset name is what makes `releases/latest`
+  downloadable by one URL.
+
 ## 0.1.2 — 2026-09-21
 
 Everything below was found by scanning three public repositories (195 + 24 + 638

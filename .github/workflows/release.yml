@@ -1,0 +1,72 @@
+name: Release
+
+# The GitHub Action in action.yml installs the CLI from a Release asset, so this
+# workflow is part of the product path, not decoration: push a version tag and the
+# tarball the world downloads is built here from that exact commit.
+
+on:
+  push:
+    # `v*.*` only: `v0` is the moving tag the Action is `uses:`-ed at, and it must
+    # not try to publish a release named v0.
+    tags: ["v*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+      - name: Publish the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "tag $TAG does not match package.json version $VERSION" >&2
+            exit 1
+          fi
+
+          # Fixed asset name: action.yml builds its download URL from the tag plus
+          # `spring-review.tgz`, and `releases/latest/download/` needs a name that
+          # does not change between releases. The version lives in the tag and in
+          # package.json inside the tarball, where `--version` reads it from.
+          # `--pack-destination` still resolves relative to the package root when
+          # npm has one, so move it explicitly and pack from there.
+          npm pack --silent
+          mv "spring-review-${VERSION}.tgz" "$RUNNER_TEMP/spring-review.tgz"
+          tar -tzf "$RUNNER_TEMP/spring-review.tgz" | grep -q '^package/dist/cli.js$' \
+            || { echo "Release asset would ship without dist/cli.js" >&2; exit 1; }
+          # npx resolves the `bin` by name; a tarball whose cli.js lost its shebang
+          # installs but cannot be executed.
+          tar -xzOf "$RUNNER_TEMP/spring-review.tgz" package/dist/cli.js \
+            | head -1 | grep -q '^#!/usr/bin/env node$' \
+            || { echo "dist/cli.js lost its shebang" >&2; exit 1; }
+
+          awk -v v="$VERSION" '
+            $1 == "##" && $2 == v { grab = 1; next }
+            grab && $1 == "##" { exit }
+            grab { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          [ -s "$RUNNER_TEMP/notes.md" ] || echo "See CHANGELOG.md for $TAG." > "$RUNNER_TEMP/notes.md"
+
+          gh release create "$TAG" "$RUNNER_TEMP/spring-review.tgz" \
+            --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            || gh release upload "$TAG" "$RUNNER_TEMP/spring-review.tgz" --clobber
+
+          gh release view "$TAG" --json tagName,assets \
+            --jq '"published \(.tagName) with \([.assets[].name] | join(", "))"'

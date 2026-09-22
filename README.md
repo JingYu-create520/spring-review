@@ -26,7 +26,16 @@ tool could not run.
 
 ## Install
 
-The npm package is not published yet, so run it from a clone. Node 20 or newer.
+The npm package is not published yet. The CLI comes from this repository's
+Releases instead, and Node 20 or newer is the only requirement:
+
+```bash
+npm i -g https://github.com/JingYu-create520/spring-review/releases/latest/download/spring-review.tgz
+spring-review --diff origin/main..HEAD
+```
+
+`releases/latest` moves; `releases/download/v0.1.3/spring-review.tgz` does not.
+To work on the tool rather than use it, clone it and run the build:
 
 ```bash
 git clone https://github.com/JingYu-create520/spring-review.git
@@ -35,7 +44,7 @@ npm ci && npm run build
 node dist/cli.js --patch examples/sample.patch
 ```
 
-Below, `spring-review` means `node /path/to/spring-review/dist/cli.js`.
+Below, `spring-review` means either of those two CLIs.
 
 ## Usage
 
@@ -79,7 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: JingYu-create520/spring-review@v0.1.1
+      - uses: JingYu-create520/spring-review@v0
         with:
           exclude: "**/generated/**"
 ```
@@ -89,10 +98,12 @@ over and no comment thread to de-duplicate. `fail-on-error: false` keeps the job
 green and still marks the lines; it does that by re-emitting at `notice` level,
 because a `::error` workflow command fails the run whatever the exit code says.
 
-The Action installs the CLI from this repository (`npx github:…#v0`, built by the
-package's `prepare` script), so there is no npm dependency to wait on.
-`install-from: npm` switches over once the package exists; `install-from: local`
-runs a build already present in the job. CI exercises all three paths.
+The Action downloads the prebuilt `spring-review.tgz` from this repository's
+Releases and runs it with node in a temporary directory, so the runner builds
+nothing and there is no npm package to wait for. `ref: v0.1.3` pins the CLI to a
+version. `install-from: npm` switches over once the package exists;
+`install-from: local` runs a build already present in the job. CI exercises the
+github and local paths on every push.
 
 ### Code scanning
 

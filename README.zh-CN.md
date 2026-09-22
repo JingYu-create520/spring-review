@@ -22,7 +22,15 @@
 
 ## 安装
 
-npm 包还没发，所以现在从 clone 跑。需要 Node 20 或更高。
+npm 包还没发，CLI 改为从这个仓库的 Releases 拿，除了 Node 20 或更高之外没有别的要求：
+
+```bash
+npm i -g https://github.com/JingYu-create520/spring-review/releases/latest/download/spring-review.tgz
+spring-review --diff origin/main..HEAD
+```
+
+`releases/latest` 会往前走，`releases/download/v0.1.3/spring-review.tgz` 不会。
+要是你想改这个工具本身，就 clone 下来构建：
 
 ```bash
 git clone https://github.com/JingYu-create520/spring-review.git
@@ -31,7 +39,7 @@ npm ci && npm run build
 node dist/cli.js --patch examples/sample.patch
 ```
 
-下面出现的 `spring-review`，都当作 `node /路径/spring-review/dist/cli.js`。
+下面出现的 `spring-review`，指的就是这两条路里的任意一个可执行文件。
 
 ## 用法
 
@@ -73,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - uses: JingYu-create520/spring-review@v0.1.1
+      - uses: JingYu-create520/spring-review@v0
         with:
           exclude: "**/generated/**"
 ```
@@ -82,9 +90,10 @@ jobs:
 `fail-on-error: false` 会让 job 保持绿色但照样标出问题——做法是把注解降级成
 `notice`，因为 `::error` 是 workflow 命令，本身就会让这次运行失败，跟退出码无关。
 
-Action 默认从这个仓库装 CLI（`npx github:…#v0`，由包的 `prepare` 脚本构建），不需要等 npm。
-`install-from: npm` 在包发布后切过去，`install-from: local` 用 job 里已经构建好的那份。
-CI 三条路径都会跑一遍。
+Action 默认从本仓库的 Release 下载已经构建好的 `spring-review.tgz`，用 node 在临时目录里
+跑起来：你的 runner 不需要构建什么，也不需要一个尚未发布的 npm 包。`ref: v0.1.3` 可以把
+CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install-from: local` 用 job 里
+已经构建好的那份。CI 每次 push 会跑 github 和 local 两条。
 
 ### Code Scanning
 

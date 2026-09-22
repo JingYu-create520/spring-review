@@ -1,6 +1,6 @@
 {
   "name": "spring-review",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Offline-first AI code review for Spring & MyBatis: git diff in, line-level findings out. Catches transactional self-invocation, N+1, ${} injection, thread-pool misuse.",
   "keywords": [
     "spring",
@@ -54,7 +54,8 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm test",
     "docs:image": "node scripts/make-demo-image.mjs",
-    "prepare": "tsup"
+    "prepare": "tsup",
+    "version": "node scripts/sync-version.mjs && git add src/version.ts"
   },
   "dependencies": {
     "commander": "^12.1.0",

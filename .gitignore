@@ -6,3 +6,6 @@ coverage/
 .tsup/
 tests/**/tmp-*/
 docs/assets/demo.html
+
+# `npm pack` in the package root is a release step, not a source change.
+*.tgz

@@ -116,13 +116,13 @@ jobs:
 
       - run: npm ci && npm run build
 
-      - name: Review the demo commit the way an outsider would (npx from GitHub)
+      - name: Review the demo commit the way an outsider would (Release tarball)
         uses: ./
         with:
           base: ${{ env.SR_DEMO_BASE }}
           head: ${{ env.SR_DEMO_HEAD }}
           install-from: github
-          ref: v0
+          ref: latest
           fail-on-error: "false"
 
       - name: Same range through the in-repo build (no network install)
