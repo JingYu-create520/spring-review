@@ -4,7 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.11 — 2026-09-22
+
+### Fixed
+
+- **A skipped file could say the wrong thing about why.** A combined merge diff
+  (`diff --cc`) and a binary file have no added lines *because* they cannot be
+  mapped, and `no added lines` was reported first — which reads as "this commit
+  changed nothing here" rather than "this input is not reviewable". The real
+  reason now wins:
+
+  ```
+  src/M.java — combined merge diff is not supported
+  ```
+
 ## 0.1.10 — 2026-09-22
+
 
 ### Fixed
 

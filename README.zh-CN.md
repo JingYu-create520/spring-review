@@ -232,7 +232,7 @@ mybatis-3 是第一个带真实 MyBatis XML 的代码库，它又带来了四个
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 134 个测试
+npm run typecheck && npm test    # 135 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

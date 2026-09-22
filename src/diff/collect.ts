@@ -156,12 +156,16 @@ export async function unitsFromDiff(files: DiffFile[], opts: CollectOptions): Pr
     const path = file.path || file.oldPath || "";
     if (!path) continue;
     if (file.status === "deleted") continue;
-    if (file.addedLines.size === 0) {
-      skipped.push({ path, reason: "no added lines" });
-      continue;
-    }
+    // Before "no added lines": a combined merge diff or a binary file has no
+    // added lines *because* it cannot be mapped, and "no added lines" reads as
+    // "this commit changed nothing here" rather than "this input is not
+    // reviewable", which is the sentence that matters to the reader.
     if (file.unsupported) {
       skipped.push({ path, reason: file.unsupported });
+      continue;
+    }
+    if (file.addedLines.size === 0) {
+      skipped.push({ path, reason: "no added lines" });
       continue;
     }
     if (!isReviewable(path)) {

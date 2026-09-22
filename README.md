@@ -270,7 +270,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 134 tests
+npm run typecheck && npm test    # 135 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
