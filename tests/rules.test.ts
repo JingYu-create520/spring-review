@@ -78,6 +78,28 @@ describe("SPR rules on the deliberately broken service", () => {
     expect(ruleLines(findings, "SPR001")).toEqual([lineOf(badSrc, "this.updateName(id, name);")]);
   });
 
+  it("SPR001 resolves a self call by name and arity, not by scanning every method", () => {
+    // The candidate lookup used to be a linear filter over every method in the
+    // class, once per call site. Indexing by name must not lose the arity check —
+    // these two classes differ only in how many arguments `run` takes.
+    const arityMismatch = [
+      "package demo;",
+      "import org.springframework.transaction.annotation.Transactional;",
+      "public class S {",
+      "    public void caller() {",
+      "        this.run(1);",
+      "    }",
+      "    @Transactional public void run(int a, int b) {}",
+      "}",
+    ].join("\n");
+    expect(ruleLines(run([unit("S.java", arityMismatch)]), "SPR001")).toEqual([]);
+
+    const arityMatch = arityMismatch.replace('run(int a, int b)', 'run(int a)');
+    expect(ruleLines(run([unit("S.java", arityMatch)]), "SPR001")).toEqual([
+      lineOf(arityMatch, "this.run(1);"),
+    ]);
+  });
+
   it("SPR002 names the checked exception as the author wrote it", () => {
     const src = [
       "package demo;",

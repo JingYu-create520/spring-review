@@ -224,6 +224,49 @@ describe("parseDiff — line-number mapping", () => {
   });
 });
 
+describe("parseDiff — git's quoted paths", () => {
+  // Genuine `git diff` output for a file named 文件Mapper.java. Git quotes and
+  // octal-escapes any path with a non-ASCII byte (core.quotePath is on by
+  // default), and undecoded that string became the file path: annotations were
+  // unclickable, `--exclude` never matched, and the real file could not be read
+  // for context because no such path exists in the tree.
+  const ESCAPED = [
+    'diff --git "a/src/\\346\\226\\207\\344\\273\\266Mapper.java" "b/src/\\346\\226\\207\\344\\273\\266Mapper.java"',
+    "index c332078..f7f39c1 100644",
+    '--- "a/src/\\346\\226\\207\\344\\273\\266Mapper.java"',
+    '+++ "b/src/\\346\\226\\207\\344\\273\\266Mapper.java"',
+    "@@ -1,3 +1,4 @@",
+    " package demo;",
+    "+import org.apache.ibatis.annotations.Select;",
+    " public interface 文件Mapper {",
+    " }",
+  ].join("\n");
+
+  it("decodes the octal escapes git writes for a non-ASCII path", () => {
+    const files = parseDiff(ESCAPED);
+    expect(files).toHaveLength(1);
+    const f = files[0]!;
+    expect(f.path).toBe("src/文件Mapper.java");
+    expect(f.unsupported).toBeUndefined();
+    expect([...f.addedLines.keys()]).toEqual([2]);
+  });
+
+  it("still leaves an ordinary path alone", () => {
+    const files = parseDiff(
+      [
+        "diff --git a/src/main/java/demo/UserService.java b/src/main/java/demo/UserService.java",
+        "index 1..2 100644",
+        "--- a/src/main/java/demo/UserService.java",
+        "+++ b/src/main/java/demo/UserService.java",
+        "@@ -1,1 +1,2 @@",
+        " package demo;",
+        "+// added",
+      ].join("\n"),
+    );
+    expect(files[0]!.path).toBe("src/main/java/demo/UserService.java");
+  });
+});
+
 describe("reconstructFile", () => {
   it("fills unknown lines with empty strings so numbering still matches HEAD", () => {
     const f = parseDiff(PATCH)[0]!;

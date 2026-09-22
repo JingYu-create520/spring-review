@@ -25,12 +25,51 @@ export interface DiffFile {
 
 const HUNK = /^@@+ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
+/**
+ * Decode a git path. Git wraps a path in quotes and escapes it C-style whenever it
+ * contains a non-ASCII byte (`core.quotePath`, on by default), so a Chinese
+ * filename arrives as `"src/\346\226\207\344\273\266Mapper.java"`. Reading the
+ * octal groups back into UTF-8 is what makes the annotation clickable, lets
+ * `--exclude` match the file, and lets the real file be read for context instead
+ * of the review quietly falling back to patch text.
+ */
+const C_ESCAPES: Record<string, string> = {
+  n: "\n",
+  t: "\t",
+  r: "\r",
+  b: "\b",
+  f: "\f",
+  v: "\v",
+  '"': '"',
+  "\\": "\\",
+};
+
 function unquote(raw: string): string {
-  let p = raw.trim();
-  if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1);
-  return p.replace(/\\([nt"\\])/g, (_all, ch: string) =>
-    ch === "n" ? "\n" : ch === "t" ? "\t" : ch,
-  );
+  const p = raw.trim();
+  if (!(p.startsWith('"') && p.endsWith('"'))) return p;
+  const body = p.slice(1, -1);
+  const bytes: number[] = [];
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i] as string;
+    if (ch !== "\\") {
+      for (const byte of Buffer.from(ch, "utf8")) bytes.push(byte);
+      continue;
+    }
+    const octal = /^\\([0-7]{1,3})/.exec(body.slice(i));
+    if (octal) {
+      bytes.push(parseInt(octal[1] as string, 8));
+      i += octal[0].length - 1;
+      continue;
+    }
+    const mapped = C_ESCAPES[body[i + 1] as string];
+    if (mapped !== undefined) {
+      for (const byte of Buffer.from(mapped, "utf8")) bytes.push(byte);
+      i += 1;
+      continue;
+    }
+    bytes.push(0x5c); // an escape this parser does not know stays a backslash
+  }
+  return Buffer.from(bytes).toString("utf8");
 }
 
 /** `a/x b/y` → [x, y]. Handles paths containing spaces when both sides match. */

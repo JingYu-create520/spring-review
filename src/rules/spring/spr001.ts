@@ -1,5 +1,5 @@
 import { callSites, hasAnnotation, methodsOf } from "../../analyze/java.js";
-import type { Rule, RuleContext } from "../../types.js";
+import type { JavaMember, Rule, RuleContext } from "../../types.js";
 import {
   annotationArgs,
   draft,
@@ -37,6 +37,14 @@ const rule: Rule = {
     for (const [typeIndex, type] of java.types.entries()) {
       const methods = methodsOf(java, typeIndex);
       if (methods.length === 0) continue;
+      // Resolved per call site, so the candidates are indexed once here rather
+      // than scanned from every method in the class each time.
+      const byName = new Map<string, JavaMember[]>();
+      for (const m of methods) {
+        const bucket = byName.get(m.name);
+        if (bucket) bucket.push(m);
+        else byName.set(m.name, [m]);
+      }
       for (const caller of methods) {
         if (caller.bodyStart < 0) continue;
         if (caller.modifiers.includes("static")) continue;
@@ -44,11 +52,8 @@ const rule: Rule = {
         for (const call of callSites(java, caller)) {
           if (call.receiver.length > 1) continue; // a.b().foo() — not a plain self call
           if (call.receiver.length === 1 && call.receiver[0] !== "this") continue;
-          const targets = methodsOf(java, typeIndex).filter(
-            (m) =>
-              m.name === call.callee &&
-              m.params.length === arityOf(call.args) &&
-              m.kind === "method",
+          const targets = (byName.get(call.callee) ?? []).filter(
+            (m) => m.params.length === arityOf(call.args) && m.kind === "method",
           );
           for (const target of targets) {
             if (target.modifiers.includes("static") || target.modifiers.includes("private")) continue;

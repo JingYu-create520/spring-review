@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.10 — 2026-09-22
+
+### Fixed
+
+- **A large file could stall a run: 43.7s for a generated class with 20k methods,
+  now 0.32s.** `callSites()` and `loopRanges()` each built a fresh `LineIndex`
+  over the whole source — a full scan of every character plus a line-start array —
+  once *per member*, so SPR001 and MYB002 were quadratic in file size while doing
+  nothing. They now use the file's existing index. SPR001 also filtered every
+  method in the class for each call site it examined; the candidates are indexed
+  by name once per class, with the arity check kept (a test pins `this.run(1)`
+  against `@Transactional run(int, int)`: no finding, and one against
+  `run(int)`).
+- **A non-ASCII file path was never decoded.** Git quotes and octal-escapes any
+  path containing a non-ASCII byte (`core.quotePath` is on by default), so a
+  commit touching `src/文件Mapper.java` arrives as
+  `"a/src/\346\226\207\344\273\266Mapper.java"`. The escapes were stripped from
+  the string but not decoded, which meant the annotation pointed at a path that
+  does not exist, `--exclude` could not match it, and the real file could not be
+  read for context. Paths are decoded from their bytes now:
+
+  ```
+  before  ::error file=src/\346\226\207\344\273\266Mapper.java,line=4
+  after   ::error file=src/文件Mapper.java,line=4
+  ```
+
+### Notes
+
+- Both fixes came from the same audit: replaying 153 real commit pairs through
+  `--diff` (no crashes, no finding on an untouched file, none on a blank line),
+  then constructing the shapes those histories happened not to contain — a
+  20k-method file, `diff --cc`, a submodule gitlink, and a Chinese filename from
+  genuine `git diff` output.
+
 ## 0.1.9 — 2026-09-22
 
 ### Fixed

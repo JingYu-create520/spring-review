@@ -528,7 +528,9 @@ export function nestedBodiesWithin(java: JavaFile, member: JavaMember): Array<[n
 export function callSites(java: JavaFile, member: JavaMember): CallSite[] {
   if (member.bodyStart < 0) return [];
   const text = java.masked;
-  const lines = new LineIndex(java.source);
+  // The file's own index: `java.source` is unchanged, so rebuilding it per member
+  // was pure cost — a 20k-method generated class took 20s per rule that asks.
+  const lines = java.index;
   const opaque = nestedBodiesWithin(java, member);
   const hidden = (offset: number) => opaque.some(([a, b]) => offset > a && offset < b);
   const out: CallSite[] = [];
@@ -602,9 +604,10 @@ function receiverIsSingleResult(text: string, dotIndex: number, bodyStart: numbe
   return false;
 }
 
-export function loopRanges(java: JavaFile, member: JavaMember): LoopRange[] {  if (member.bodyStart < 0) return [];
+export function loopRanges(java: JavaFile, member: JavaMember): LoopRange[] {
+  if (member.bodyStart < 0) return [];
   const text = java.masked;
-  const lines = new LineIndex(java.source);
+  const lines = java.index;
   const opaque = nestedBodiesWithin(java, member);
   const hidden = (offset: number) => opaque.some(([a, b]) => offset > a && offset < b);
   const patterns: Array<{ kind: LoopRange["kind"]; re: RegExp }> = [
@@ -681,8 +684,25 @@ function isLocalDeclaration(prefix: string, name: string): boolean {
   return /^[A-Z]/.test(lastWord) || /[>\]]$/.test(lastWord);
 }
 
+/**
+ * Members that belong to one type. Memoised per file: rules ask this once per
+ * call site, and a generated class with 20k methods turned each ask into a full
+ * scan of the member list — 40s of CI for one file.
+ */
+const membersByOwner = new WeakMap<JavaFile, Map<number, JavaMember[]>>();
+
 export function methodsOf(java: JavaFile, typeIndex: number): JavaMember[] {
-  return java.members.filter((m) => m.owner === typeIndex);
+  let byOwner = membersByOwner.get(java);
+  if (!byOwner) {
+    byOwner = new Map();
+    membersByOwner.set(java, byOwner);
+  }
+  let owned = byOwner.get(typeIndex);
+  if (!owned) {
+    owned = java.members.filter((m) => m.owner === typeIndex);
+    byOwner.set(typeIndex, owned);
+  }
+  return owned;
 }
 
 export function isSpringBeanType(type: JavaType): boolean {
