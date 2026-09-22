@@ -63,7 +63,10 @@ const ANNO = /@(Select|Update|Insert|Delete)\s*\(((?:"[^"]*"(?:\s*\+\s*"[^"]*")*
 /** SQL written in mapper-interface annotations. */
 export function javaSqlScopes(java: JavaFile): SqlScope[] {
   const out: SqlScope[] = [];
-  const source = java.source;
+  // Literals intact, comments gone: the SQL of an annotation is inside a string,
+  // and the `@Select({ "<script>", "select * from users" })` that appears in
+  // `Select.java`'s own Javadoc is an example of the feature, not a query.
+  const source = java.commentMasked;
   ANNO.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = ANNO.exec(source))) {

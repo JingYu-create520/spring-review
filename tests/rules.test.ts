@@ -272,6 +272,82 @@ describe("MYB rules on the deliberately broken mapper", () => {
     expect(ruleLines(analyze(visible), "MYB005")).toEqual([lineOf(visible, '<select id="s"')]);
   });
 
+  it("reads annotation SQL from code and ignores the example in its own Javadoc", () => {
+    // mybatis-3 produced exactly this finding on `annotations/Select.java`: the
+    // javadoc of the `@Select` annotation shows `select *`, and the scan of
+    // annotation SQL was reading the raw file rather than the comment-masked one.
+    const doc = [
+      "package demo;",
+      "import java.util.List;",
+      "import java.util.Map;",
+      "import org.apache.ibatis.annotations.Select;",
+      "",
+      '/** Example: <pre>@Select("select * from users where name = \'${kw}\'")</pre> */',
+      "public interface DocMapper {",
+      '    @Select("select id from users where name = #{n} limit 20")',
+      "    List<Map<String, Object>> real(String n);",
+      "}",
+    ].join("\n");
+    expect(run([unit("DocMapper.java", doc)]).map((f) => f.rule)).toEqual([]);
+
+    // The same text written as a real annotation is still reported — and on the
+    // annotation's own line, not on the javadoc line that quotes it.
+    const real = doc.replace("select id from users", "select * from users");
+    expect(ruleLines(run([unit("DocMapper.java", real)]), "MYB004")).toEqual([
+      lineOf(real, '    @Select("select * from users'),
+    ]);
+  });
+
+  it("leaves XML documentation that merely quotes a mapper alone", () => {
+    // MyBatis' own site docs are `<document>` files whose `<source>` blocks hold
+    // mapper examples. Those examples are the documentation of a feature, not
+    // code anybody ships, and reporting them is how the rule set gets ignored.
+    const src = [
+      '<?xml version="1.0"?>',
+      "<document>",
+      '  <section name="sqlmap">',
+      "    <source><![CDATA[",
+      '    <select id="selectBlog" resultType="Blog">',
+      "      select * from blog where title like '%${kw}'",
+      "    </select>",
+      "    ]]></source>",
+      "  </section>",
+      "</document>",
+      "",
+    ].join("\n");
+    const result = reviewUnits([unit("sqlmap-xml.xml", src)], rules, DEFAULTS);
+    expect(result.findings).toEqual([]);
+    expect(result.skipped.map((s) => s.reason)).toContain("root element is <document>, not <mapper>");
+  });
+
+  it("names a mapper with no SQL in it once, not once per rule", () => {
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="R">',
+      '  <resultMap id="rm" type="map"><id column="id" property="id"/></resultMap>',
+      "</mapper>",
+    ].join("\n");
+    const result = reviewUnits([unit("OnlyMap.xml", src)], rules, DEFAULTS);
+    expect(result.findings).toEqual([]);
+    expect(result.skipped.filter((s) => s.reason.includes("no MyBatis SQL"))).toHaveLength(1);
+  });
+
+  it("treats `<include refid=\"${prop}\"/>` as a property, not an injection", () => {
+    // Documented MyBatis behaviour: the placeholder picks which fragment to
+    // include and its value comes from a `<property>` or config file.
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="P">',
+      '  <select id="s" resultType="map">select id from t <include refid="${which}"/></select>',
+      "</mapper>",
+    ].join("\n");
+    const hits = analyze(src).filter((f) => f.rule === "MYB001");
+    expect(hits.map((h) => h.severity)).toEqual(["warn"]);
+    expect(hits[0]?.message).toContain("refid");
+  });
+
   it("ignores XML that is not a mapper, once rather than per rule", () => {
     const result = reviewUnits(
       [unit("pom.xml", '<?xml version="1.0"?><project><name>x</name><a>${prop}</a></project>')],

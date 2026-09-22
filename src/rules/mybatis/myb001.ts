@@ -67,20 +67,27 @@ const rule: Rule = {
         }
 
         const dynamicName = ORDERISH_FRAGMENT.test(head) && ORDER_CONTEXT.test(context);
+        // `<include refid="${include_target}"/>` is a documented MyBatis feature:
+        // the text comes from a `<property>` or a config file, and what it chooses
+        // is a fragment name rather than SQL. One warn, asking where the property
+        // comes from — an error there is a false positive on the framework's own
+        // example, which is literally what the site documentation contains.
+        const includeChoice = /<include\b[^>]*$/.test(scope.raw.slice(0, offset));
+        const zh = includeChoice
+          ? `${label(scope)} 的 refid 用了 \${${fragment}},它选的是被 include 的片段名,值通常来自 <property> 或配置。确认这条属性没有接到请求参数上。`
+          : `${label(scope)} 用 \${${fragment}} 拼接 SQL${dynamicName ? "(动态排序/列名场景)" : ""},该值会原样出现在语句里,存在 SQL 注入风险。`;
+        const en = includeChoice
+          ? `${label(scope)} chooses its <include> target through \${${fragment}}, so the text comes from a property rather than a parameter.`
+          : `${label(scope)} interpolates \${${fragment}} into SQL text instead of binding it.`;
         out.push(
-          draft(
-            rule,
-            unit,
-            line,
-            `${label(scope)} 用 \${${fragment}} 拼接 SQL${dynamicName ? "(动态排序/列名场景)" : ""},该值会原样出现在语句里,存在 SQL 注入风险。`,
-            `${label(scope)} interpolates \${${fragment}} into SQL text instead of binding it.`,
-            {
-              severity: dynamicName ? "warn" : "error",
-              suggestion: dynamicName
+          draft(rule, unit, line, zh, en, {
+            severity: dynamicName || includeChoice ? "warn" : "error",
+            suggestion: includeChoice
+              ? "把该属性固定在构建期(不接受外部输入),或者直接把片段名写出来。"
+              : dynamicName
                 ? '用服务端白名单映射列名:Map<String,String> SORTABLE = Map.of("name","user_name"),取 SORTABLE.get(param) 拼 SQL,取不到就报错;条件值仍用 #{ }。'
                 : `改为预编译参数 #{${head}}。`,
-            },
-          ),
+          }),
         );
       }
     }

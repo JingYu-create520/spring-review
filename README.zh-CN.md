@@ -189,6 +189,7 @@ demo-project 是自带样本的夹具，它只能证明"规则该触发的时候
 | 两个 Spring 网关模块（不含 MyBatis） | 195 | 3 | 都在 `*IT.java` 的轮询循环里查库 —— 确实是逐次往返，但在测试里是有意的 |
 | [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | 一个 `SELECT *`，一个无界查询 |
 | [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 个 `SELECT *`、12 个循环里逐条调 mapper、1 个无界查询、1 个失效的 `@Scheduled` |
+| [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 581 | 全在框架自己的测试 mapper 里：`SELECT *`、无界查询、`${}` 特性测试 |
 
 mall 这一轮扫出了一个真实 bug：`OrderTimeOutCancelTask` 里 `@Scheduled(cron = …)` 标在
 **private** 方法上，Spring 不会调用它 —— 那个超时订单取消任务根本没在跑。
@@ -200,17 +201,27 @@ MyBatis Generator 自己生成的 `order by ${orderByClause}`，现在框架占�
 `repository.findByName(name).map(e -> repository.save(e))` 被当成 N+1，而那个
 `Optional` 只会执行一次。
 
-还没被验证到的：`${}` 里真的带着用户输入的代码库。上面几个项目里的 `${}` 全部来自框架
-生成。
+mybatis-3 是第一个带真实 MyBatis XML 的代码库，它又带来了四个修复。它的站点文档是
+`<document>` XML，`<source>` 块里引着 mapper 例子 —— 于是 64 条发现全落在说明文字上，
+其中一条把 `<include refid="${include_target}"/>` 报成注入 error，而那正是文档里写的
+选择片段的方式。注解 SQL 之前是从原始文件里扫的，所以 `@Select` 自己的 Javadoc 例子
+产出了一条 `SELECT *`。没有 SQL 的文件又变成每条规则记一次跳过。只用来选 include 目标
+的 `${}` 现在是 warn，不再是注入 error。
+
+还没被验证到的：`${}` 里真的带着用户输入的代码库。最接近的是 mybatis-3 的特性测试，
+`${column}`、`${table}` 由测试属性填 —— 确实是原样拼接，报得没错，但不是谁的请求。
 
 ## 它做不到什么
 
 没有编译器，没有 classpath。结构来自"把注释和字符串掩掉之后的括号状态机"，所以跨文件
-的 Bean 装配、自定义元注解（`@MyService` 这类）、通过 `@Bean` 注册的类，它都看不见。
+的 Bean 装配、自定义元注解（`@MyService` 这类）、通过 `@Bean` 注册的类，它都看不见
+（[#2](https://github.com/JingYu-create520/spring-review/issues/2)）；从别的 mapper
+文件 `<include>` 进来的 `<sql>` 片段，对使用它的语句也是不可见的
+（[#3](https://github.com/JingYu-create520/spring-review/issues/3)）。
 
 结构解析不出来时，规则保持沉默，并在 `skipped` 里说明原因。这发生在它读不懂的 Java
-上，也发生在 `--patch` 指向你本地没有的文件时——那种情况下 `${}` 检测仍然工作，因为
-一行就够判断了。
+上，也发生在 `--patch` 指向你本地没有的文件、或者 patch 的行号和磁盘上的文件对不上
+时——前一种情况下 `${}` 检测仍然工作，因为一行就够判断了。
 
 它不是 SonarQube，也不是 Checkstyle。格式和代码异味不是它看的东西。
 
@@ -218,7 +229,7 @@ MyBatis Generator 自己生成的 `order by ${orderByClause}`，现在框架占�
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 121 个测试
+npm run typecheck && npm test    # 125 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

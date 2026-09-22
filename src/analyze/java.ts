@@ -60,8 +60,17 @@ function* iterate(text: string, re: RegExp): Generator<RegExpExecArray> {
   while ((m = local.exec(text))) yield m;
 }
 
-/** Replace comment / literal bodies with spaces, keeping length and newlines. */
-export function maskJavaLiterals(src: string): string {
+/**
+ * Replace comment / literal bodies with spaces, keeping length and newlines.
+ *
+ * `keepStrings` is for the one place that reads *inside* a string literal — the
+ * SQL of an `@Select("…")` — where blanking the literals would blank the input.
+ * Comments still go, because annotation examples in Javadoc are not code: on
+ * mybatis-3 the unmasked scan reported `select *` from the `@Select` javadoc of
+ * `annotations/Select.java` as if it were a query somebody wrote.
+ */
+export function maskJavaLiterals(src: string, opts: { keepStrings?: boolean } = {}): string {
+  const keepStrings = opts.keepStrings === true;
   const out = src.split("");
   const blank = (from: number, to: number) => {
     for (let i = from; i < to && i < out.length; i++) {
@@ -83,6 +92,10 @@ export function maskJavaLiterals(src: string): string {
       const stop = end < 0 ? src.length : end + 2;
       blank(i, stop);
       i = stop;
+      continue;
+    }
+    if (keepStrings) {
+      i += 1;
       continue;
     }
     if (ch === '"' && src[i + 1] === '"' && src[i + 2] === '"') {
@@ -258,6 +271,7 @@ const FIELD_SHAPE =
 
 export function analyzeJava(path: string, source: string): JavaFile {
   const masked = maskJavaLiterals(source);
+  const commentMasked = maskJavaLiterals(source, { keepStrings: true });
   const lines = new LineIndex(source);
   const ctx: Ctx = { masked, lines };
   const diagnostics: string[] = [];
@@ -323,6 +337,7 @@ export function analyzeJava(path: string, source: string): JavaFile {
     path,
     source,
     masked,
+    commentMasked,
     index: lines,
     lines: source.split("\n"),
     types,

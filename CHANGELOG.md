@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.7 — 2026-09-22
+
+The first corpus with real MyBatis XML: `mybatis/mybatis-3`, 1837 files. It also
+produced four fixes.
+
+### Fixed
+
+- **XML documentation that quotes a mapper was reviewed as if it were one.**
+  MyBatis' site docs are `<document>` files whose `<source>` blocks contain
+  example statements: 64 findings, all of them on prose, one of them an injection
+  `error` on `<include refid="${include_target}"/>` — the documented way to choose
+  a fragment. A complete file whose root element is not `<mapper>` is now skipped
+  once, by name; a header-less patch fragment is still read, because it has no
+  root to judge by.
+- **Annotation SQL was read from the raw file**, so the Javadoc example inside
+  `annotations/Select.java` produced a `SELECT *` finding on the framework's own
+  documentation of the annotation. `@Select("…")` is now scanned from a copy with
+  comments blanked and string literals kept — the two masks are different on
+  purpose, and `JavaFile` carries both.
+- **A mapper with no SQL in it logged one skip per rule again.** One line per file
+  now: `no MyBatis SQL in this file`.
+- **`${}` that only picks an include target is a `warn`.** The value comes from a
+  `<property>` or config, and what it selects is a fragment name. Reporting it as
+  an injection error is how a rule gets disabled; the message asks the one useful
+  question, whether that property can be reached from a request.
+
 ## 0.1.6 — 2026-09-22
 
 ### Fixed

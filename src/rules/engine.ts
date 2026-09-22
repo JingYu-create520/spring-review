@@ -1,5 +1,5 @@
 import { analyzeJava } from "../analyze/java.js";
-import { analyzeMapperXml } from "../analyze/xml.js";
+import { analyzeMapperXml, rootElementOf } from "../analyze/xml.js";
 import { LineIndex } from "../util/text.js";
 import { SEVERITY_RANK, type Finding, type FindingDraft, type JavaFile, type MapperXml, type ReviewOptions, type ReviewResult, type ReviewUnit, type Rule } from "../types.js";
 import { collectSuppressions, isSuppressed } from "./suppression.js";
@@ -39,11 +39,19 @@ export function reviewUnits(units: ReviewUnit[], rules: Rule[], options: ReviewO
         skipped.push({ path: unit.path, reason: "not a MyBatis mapper XML" });
         continue;
       }
+      const root = rootElementOf(unit.content);
+      if (unit.complete && root && root !== "mapper") {
+        // MyBatis' own site documentation is `<document>` XML whose `<source>`
+        // blocks contain mapper examples. Reviewing prose is how a tool gets
+        // ignored, and a unit with no root tag at all (a header-less patch
+        // fragment) is deliberately not judged by this rule.
+        skipped.push({ path: unit.path, reason: `root element is <${root}>, not <mapper>` });
+        continue;
+      }
       // A mapper that is all `<sql>` fragments is still reviewable: the fragments
-      // are scanned where they are written, so only call the file inconclusive
-      // when there is no SQL in it at all.
+      // are scanned where they are written. Only say "nothing here" once.
       if (xml.statements.length === 0 && Object.keys(xml.fragments).length === 0) {
-        structuralIssues.push(xml.diagnostics.join(" "));
+        skipped.push({ path: unit.path, reason: "no MyBatis SQL in this file" });
       }
       // Metadata only: `IPage` parameters live in the interface, not the XML.
       if (unit.companion) companion = analyzeJava(unit.companion.path, unit.companion.content);

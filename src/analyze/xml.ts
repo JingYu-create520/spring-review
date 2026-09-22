@@ -71,6 +71,21 @@ export function stripTags(text: string): string {
   return text.replace(/<\/?[A-Za-z_][\w:.-]*(?:"[^"]*"|'[^']*'|[^"'>])*\/?>/g, " ");
 }
 
+/**
+ * The document's root element name, for telling a mapper file from an XML
+ * document that merely *contains* `<select>`: MyBatis' own site docs are
+ * `<document>` files whose `<source>` blocks hold mapper examples, and every
+ * rule fires happily on them. Comments are blanked and `<?xml`, `<!DOCTYPE` and
+ * `<![CDATA[` never match the name pattern, so the first hit is the root.
+ * `undefined` means no root element is present at all, which is the case for a
+ * unit rebuilt from a header-less patch fragment — that one must stay readable.
+ */
+export function rootElementOf(source: string): string | undefined {
+  const masked = stripXmlComments(source);
+  const m = /<([A-Za-z_][\w:.-]*)(?:"[^"]*"|'[^']*'|[^"'>])*[>/]/.exec(masked);
+  return m?.[1];
+}
+
 export function analyzeMapperXml(path: string, source: string): MapperXml {
   const masked = stripXmlComments(source);
   const lines = new LineIndex(source);

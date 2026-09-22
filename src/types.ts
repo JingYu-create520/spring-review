@@ -82,6 +82,12 @@ export interface JavaFile {
   source: string;
   /** Source with comments and string/char literal bodies blanked out (same length). */
   masked: string;
+  /**
+   * Source with comments blanked but string literals intact (same length), for
+   * reading the SQL inside `@Select("…")` without mistaking a Javadoc example
+   * for an annotation.
+   */
+  commentMasked: string;
   /** Raw source split by line; index 0 is line 1. */
   lines: string[];
   /** offset → line number, for every structure we located in `masked`. */

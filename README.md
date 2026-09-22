@@ -214,6 +214,7 @@ nothing planted for them.
 | two Spring gateway modules (no MyBatis) | 195 | 3 | queries inside polling loops in `*IT.java` — real per-iteration round trips, intentional in a test |
 | [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | one `SELECT *`, one unbounded select |
 | [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 `SELECT *`, 12 mapper calls inside batch loops, 1 unbounded select, 1 dead `@Scheduled` |
+| [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 581 | every one of them inside the framework's own test mappers: `SELECT *`, unbounded selects, `${}` feature tests |
 
 The mall run found a real bug: `@Scheduled(cron = …)` on a **private** method in
 `OrderTimeOutCancelTask`, which Spring will not invoke. That task does not run.
@@ -227,19 +228,35 @@ directory argument reported a clean run over zero files. And
 `repository.findByName(name).map(e -> repository.save(e))` was read as an N+1 even
 though the `Optional` runs once.
 
+mybatis-3 was the first corpus with real MyBatis XML, and it cost four more. Its
+site documentation is `<document>` XML whose `<source>` blocks quote mapper
+examples — 64 findings, all of them on prose, including an injection error on
+`<include refid="${include_target}"/>`, which is the documented way to choose a
+fragment. Annotation SQL was scanned from the raw file, so the Javadoc of
+`@Select` itself produced a `SELECT *` finding. Files with no SQL in them logged
+one skip per rule again. And a `${}` that only picks an include target is a `warn`
+now, not an injection `error`.
+
 What this still does not prove: a codebase where a `${}` placeholder carries user
-input. Every `${}` in the projects above was framework-generated.
+input. The nearest approach is mybatis-3's feature tests, where `${column}` and
+`${table}` are filled from test properties — interpolated raw, correctly reported,
+but nobody's request.
 
 ## What it does not do
 
 No compiler, no classpath. Structure comes from a bracket state machine over a copy
 of the file with comments and string literals blanked out, so cross-file bean wiring,
 custom meta-annotations like `@MyService`, and `@Bean`-registered classes are
-invisible to it.
+invisible to it ([#2](https://github.com/JingYu-create520/spring-review/issues/2)),
+and a `<sql>` fragment borrowed from another mapper file is not visible to the
+statement that includes it
+([#3](https://github.com/JingYu-create520/spring-review/issues/3)).
 
 When structure does not resolve, the rule stays quiet and says so under `skipped`.
-That happens on Java it cannot follow, and on `--patch` input for a file you do not
-have locally; `${}` detection still works there, because one line is enough to judge.
+That happens on Java it cannot follow, on `--patch` input for a file you do not have
+locally, and on a patch whose context lines do not match the file it claims to
+change; `${}` detection still works in those cases, because one line is enough to
+judge.
 
 It is not SonarQube and not Checkstyle. Formatting and code smell are not what it
 looks at.
@@ -248,7 +265,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 121 tests
+npm run typecheck && npm test    # 125 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
