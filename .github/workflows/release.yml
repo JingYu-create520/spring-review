@@ -48,12 +48,20 @@ jobs:
           # npm has one, so move it explicitly and pack from there.
           npm pack --silent
           mv "spring-review-${VERSION}.tgz" "$RUNNER_TEMP/spring-review.tgz"
-          tar -tzf "$RUNNER_TEMP/spring-review.tgz" | grep -q '^package/dist/cli.js$' \
+
+          # Each check below reads a file rather than piping into `grep -q`. grep
+          # exits at its first match, tar then dies of SIGPIPE, and `pipefail`
+          # turns a passing check into a failed one — which is exactly how the
+          # first run of this job failed on a tarball that was fine.
+          tar -tzf "$RUNNER_TEMP/spring-review.tgz" > "$RUNNER_TEMP/contents.txt"
+          grep -qx "package/dist/cli.js" "$RUNNER_TEMP/contents.txt" \
             || { echo "Release asset would ship without dist/cli.js" >&2; exit 1; }
-          # npx resolves the `bin` by name; a tarball whose cli.js lost its shebang
-          # installs but cannot be executed.
-          tar -xzOf "$RUNNER_TEMP/spring-review.tgz" package/dist/cli.js \
-            | head -1 | grep -q '^#!/usr/bin/env node$' \
+
+          # npx resolves the `bin` by name, so a cli.js that lost its shebang
+          # installs and then cannot be executed.
+          tar -xzf "$RUNNER_TEMP/spring-review.tgz" -C "$RUNNER_TEMP" package/dist/cli.js
+          IFS= read -r first_line < "$RUNNER_TEMP/package/dist/cli.js"
+          [ "$first_line" = "#!/usr/bin/env node" ] \
             || { echo "dist/cli.js lost its shebang" >&2; exit 1; }
 
           awk -v v="$VERSION" '
