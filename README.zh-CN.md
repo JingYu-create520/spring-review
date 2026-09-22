@@ -189,7 +189,7 @@ demo-project 是自带样本的夹具，它只能证明"规则该触发的时候
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 105 个测试
+npm run typecheck && npm test    # 115 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
@@ -210,3 +210,5 @@ MIT，见 [LICENSE](./LICENSE)。
 - [mcp-tool-gateway](https://github.com/JingYu-create520/mcp-tool-gateway) — 给 MCP 工具调用加 RBAC、审计和人工确认
 - [agent-regression](https://github.com/JingYu-create520/agent-regression) — Agent 回归测试，跑在 CI 里
 - [vredis](https://github.com/JingYu-create520/vredis) — 用 Rust 写的、说 RESP2 的迷你向量库
+- [mini-search](https://github.com/JingYu-create520/mini-search) — 中文本地混合搜索，分词器手写
+- [jvm-incident-agent](https://github.com/JingYu-create520/jvm-incident-agent) — 从 thread dump、GC 日志和堆直方图分析 JVM 事故

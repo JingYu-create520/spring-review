@@ -211,7 +211,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 105 tests
+npm run typecheck && npm test    # 115 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
@@ -233,3 +233,5 @@ MIT. See [LICENSE](./LICENSE).
 - [mcp-tool-gateway](https://github.com/JingYu-create520/mcp-tool-gateway) — RBAC, audit and human confirmation in front of MCP tool calls
 - [agent-regression](https://github.com/JingYu-create520/agent-regression) — regression tests for agents, in CI
 - [vredis](https://github.com/JingYu-create520/vredis) — a small vector database in Rust that speaks RESP2
+- [mini-search](https://github.com/JingYu-create520/mini-search) — local-first hybrid search for Chinese, hand-written analyzer
+- [jvm-incident-agent](https://github.com/JingYu-create520/jvm-incident-agent) — JVM incident analysis from thread dumps, GC logs and heap histograms
