@@ -60,14 +60,18 @@ export function mergeOptions(
   config: SpringReviewConfig,
   flags: Partial<ReviewOptions>,
 ): ReviewOptions {
+  // Ids are split on commas and whitespace, then upper-cased: `" SPR002 "` and
+  // `"SPR002, SPR003"` are how people write a list when the schema says array of
+  // string, and accepting them cannot mislead anybody — the rules they name are
+  // the rules that get disabled. An id that matches nothing is still refused
+  // (see the CLI's `no such rule` check).
+  const ids = (list: string[] | undefined) =>
+    (list ?? []).flatMap((id) => id.split(/[\s,]+/)).filter(Boolean).map((id) => id.toUpperCase());
   return {
     minSeverity: (flags.minSeverity ?? config.minSeverity ?? "warn") as Severity,
     exclude: [...(config.exclude ?? []), ...(flags.exclude ?? [])],
     experimental: flags.experimental ?? config.experimental ?? false,
-    disabledRules: [
-      ...(config.disable ?? []),
-      ...(flags.disabledRules ?? []),
-    ].map((r) => r.toUpperCase()),
-    onlyRules: flags.onlyRules ?? config.only,
+    disabledRules: [...ids(config.disable), ...ids(flags.disabledRules)],
+    onlyRules: flags.onlyRules ?? ids(config.only),
   };
 }

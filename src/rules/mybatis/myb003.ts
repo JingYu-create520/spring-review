@@ -21,6 +21,8 @@ const PATTERNS: Array<{ re: RegExp; why: string }> = [
   { re: /<bind\b[^>]*value\s*=\s*["']\s*'%'\s*\+/i, why: "<bind> 给参数加了前导 %" },
 ];
 
+const QUOTED_PLACEHOLDER = /'\s*#\{[^}]*\}\s*'/i;
+
 const rule: Rule = {
   id: "MYB003",
   title: "左通配 LIKE 导致索引失效",
@@ -34,6 +36,40 @@ const rule: Rule = {
     const out = [];
     const seen = new Set<string>();
     for (const scope of scopesFor({ xml, java })) {
+      const text = scopeText(scope);
+      // A placeholder inside quotes is not a placeholder: the `?` MyBatis writes
+      // ends up inside a string literal, and a driver does not treat that as a
+      // parameter — so either nothing binds and the column is compared against
+      // literal text, or the binding itself fails. Either way the condition is
+      // not the fuzzy match its author meant. Found in a shipping business
+      // project (newbee-mall's goods search), which is also why the README's
+      // "nobody writes it that way" was wrong. Error, because the query is broken
+      // rather than merely slow, and because index advice printed next to it would
+      // be the wrong fix. XML only for now: an annotation's offsets differ between
+      // `raw` and `resolved`, so the line number could not be trusted there.
+      const quoted = QUOTED_PLACEHOLDER.exec(text);
+      if (scope.source === "xml" && quoted && /\blike\b/i.test(text)) {
+        const line = lineAt(scope.raw, quoted.index, scope.line);
+        const key = `${line}|quoted-placeholder`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(
+            draft(
+              rule,
+              unit,
+              line,
+              `${label(scope)} 把 ${quoted[0]} 写在引号里:引号内的占位符不会被当成参数绑定,这一项要么按字面量比较、要么在设参时报错,不是作者想要的模糊匹配。`,
+              `${label(scope)} puts the placeholder inside quotes (${quoted[0]}), so it is not bound as a parameter: the comparison runs against literal text, or the binding fails.`,
+              {
+                severity: "error",
+                suggestion:
+                  "去掉引号让参数真正绑定:like CONCAT('%', #{goodsName}, '%')。改完请确认这条查询此前返回的结果是否符合预期。",
+              },
+            ),
+          );
+        }
+        continue;
+      }
       for (const { re, why } of PATTERNS) {
         const m = new RegExp(re.source, re.flags).exec(scopeText(scope));
         if (!m) continue;

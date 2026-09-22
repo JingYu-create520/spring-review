@@ -165,9 +165,11 @@ CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install
 被误报，而那样的项目是绝大多数。这个文件看不到的文本算未知，不算不存在：
 `<include refid="other.Mapper.commonWhere">` 解析不出来的时候，条件很可能就藏在那儿。
 
-左通配 `LIKE` 在真实 mapper 里几乎不会写成 `'%foo%'`，因为 `#{}` 不能放进引号。实际
-形态是 `concat('%', #{kw}, '%')` 和 `<bind value="'%' + kw + '%'/>`。只匹配字面量，
-这条规则等于不存在。
+左通配 `LIKE` 在真实 mapper 里很少写成 `'%foo%'`，因为 `#{}` 一进引号就不再是参数。
+实际形态是 `concat('%', #{kw}, '%')` 和 `<bind value="'%' + kw + '%'/>`，只匹配字面量的
+话这条规则等于不存在。带引号的写法确实会出现在真实代码里——newbee-mall 的商品搜索有两处
+`CONCAT('%','#{goodsName}','%')`——但那不是查询慢，而是条件根本绑不上，所以 MYB003 对它
+报 error，并让你把引号去掉。
 
 ## 为什么不直接问大模型
 
@@ -190,6 +192,7 @@ demo-project 是自带样本的夹具，它只能证明"规则该触发的时候
 | [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | 一个 `SELECT *`，一个无界查询 |
 | [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 个 `SELECT *`、12 个循环里逐条调 mapper、1 个无界查询、1 个失效的 `@Scheduled` |
 | [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 581 | 全在框架自己的测试 mapper 里：`SELECT *`、无界查询、`${}` 特性测试 |
+| [newbee-ltd/newbee-mall](https://github.com/newbee-ltd/newbee-mall) | 98 | 4 | 两处左通配搜索，外加两处商品搜索的 `#{}` 被写在引号里、根本绑定不上 |
 
 mall 这一轮扫出了一个真实 bug：`OrderTimeOutCancelTask` 里 `@Scheduled(cron = …)` 标在
 **private** 方法上，Spring 不会调用它 —— 那个超时订单取消任务根本没在跑。
@@ -229,7 +232,7 @@ mybatis-3 是第一个带真实 MyBatis XML 的代码库，它又带来了四个
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 129 个测试
+npm run typecheck && npm test    # 131 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

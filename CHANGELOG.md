@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.9 — 2026-09-22
+
+### Fixed
+
+- **0.1.8's own rule-id check over-corrected.** `"disable": [" SPR002 "]` — a
+  hand-edited JSON with a stray space — became a rejected run instead of a
+  disabled rule, which is the same kind of pedantry the release was about. Ids are
+  now split on whitespace and commas before matching, so `["spr002"]`,
+  `[" SPR002 "]` and `["SPR001, SPR002"]` all do what their author meant. An id
+  that names no rule is still refused.
+- **MYB003 now separates a slow search from a broken one.** A `#{}` inside quotes
+  is not a parameter: `CONCAT('%','#{goodsName}','%')` never binds the value. That
+  was reported as a leading-wildcard warning with advice about indexes, next to
+  statements where the placeholder is correctly unquoted and the only complaint is
+  performance. Now the quoted form is an `error` saying to drop the quotes, and the
+  bindable form stays a `warn` about the index.
+- Both READMEs claimed a `#{}` cannot be written inside quotes. It can, and
+  [newbee-mall](https://github.com/newbee-ltd/newbee-mall) — 98 files, a real
+  business project with MyBatis XML — has it in two statements of its goods search
+  (`NewBeeMallGoodsMapper.xml:84` and `:171`). That corpus is now in the table, and
+  its two errors are the same kind of thing mall's private `@Scheduled` was: a
+  feature that does not work, found in somebody else's shipped code.
+
 ## 0.1.8 — 2026-09-22
 
 ### Fixed

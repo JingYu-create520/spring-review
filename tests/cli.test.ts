@@ -210,6 +210,21 @@ describe("CLI refuses input it cannot honour", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("tolerates the way people type ids, and still refuses unknown ones", async () => {
+    // 0.1.8's own validation over-corrected: `" SPR002 "` in a hand-edited config
+    // became a rejected run. Case, padding and commas are typing, not intent.
+    const dir = await workspace('{"disable":[" spr002 ","SPR001, SPR002 "]}');
+    const ok = await cli("--cwd", dir, "--file", "src");
+    expect(ok.code).toBe(0);
+    expect(ok.out).not.toContain("SPR002");
+
+    await writeFile(join(dir, ".spring-review.json"), '{"disable":["SPR2"]}');
+    const typo = await cli("--cwd", dir, "--file", "src");
+    expect(typo.code).toBe(2);
+    expect(typo.err).toContain("no such rule: SPR2");
+    await rm(dir, { recursive: true, force: true });
+  });
+
   it("a broken .spring-review.json stops the run instead of being ignored", async () => {
     const dir = await workspace('{"disables":["SPR001"],"exclude":123}');
     const { code, err } = await cli("--cwd", dir, "--file", "src");

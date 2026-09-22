@@ -387,6 +387,29 @@ describe("MYB rules on the deliberately broken mapper", () => {
     expect(at).toContain(lineOf(badXmlSrc, "<bind name=\"pattern\""));
   });
 
+  it("MYB003 escalates a placeholder written inside quotes", () => {
+    // Straight from a shipping business project (newbee-mall's goods search):
+    // CONCAT('%','#{goodsName}','%') never binds, so the filter compares against
+    // literal text. Reporting that as "your LIKE cannot use an index" describes
+    // the wrong problem and suggests the wrong fix.
+    const broken = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="Q">',
+      `  <select id="s" resultType="map">select id from t where name like CONCAT('%','#{kw}','%') limit 20</select>`,
+      "</mapper>",
+    ].join("\n");
+    const hits = analyze(broken).filter((f) => f.rule === "MYB003");
+    expect(hits.map((h) => h.severity)).toEqual(["error"]);
+    expect(hits[0]?.message).toContain("'#{kw}'");
+
+    // The bindable spelling stays a warn about the index, with no claim of breakage.
+    const bindable = broken.replace("'#{kw}'", "#{kw}");
+    const kept = analyze(bindable).filter((f) => f.rule === "MYB003");
+    expect(kept.map((f) => f.severity)).toEqual(["warn"]);
+    expect(kept[0]?.message).not.toContain("引号");
+  });
+
   it("MYB004 flags SELECT * but never count(1)", () => {
     expect(ruleLines(findings, "MYB004")).toEqual([lineOf(badXmlSrc, "SELECT * FROM user")]);
   });

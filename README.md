@@ -186,10 +186,13 @@ codebase, which is most of them. Text this file cannot see counts as unknown rat
 than absent: an `<include refid="other.Mapper.commonWhere">` that resolves to nothing
 is where the condition may be hiding.
 
-A leading-wildcard `LIKE` almost never appears as `'%foo%'` in a mapper, because
-`#{}` cannot sit inside quotes. The real forms are `concat('%', #{kw}, '%')` and
-`<bind value="'%' + kw + '%'/>`. Matching only the literal would make the rule
-quietly useless.
+A leading-wildcard `LIKE` rarely appears as `'%foo%'`, because a `#{}` inside
+quotes stops being a parameter. The forms people write are `concat('%', #{kw},
+'%')` and `<bind value="'%' + kw + '%'/>`, so a rule that matched only the literal
+would be quietly useless. The quoted spelling does turn up in real code —
+newbee-mall's goods search has `CONCAT('%','#{goodsName}','%')` in two statements —
+and that one is not a slow query but a filter that cannot bind, so MYB003 calls it
+an error and says to drop the quotes.
 
 ## Why not just ask the model
 
@@ -216,6 +219,7 @@ nothing planted for them.
 | [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | one `SELECT *`, one unbounded select |
 | [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 `SELECT *`, 12 mapper calls inside batch loops, 1 unbounded select, 1 dead `@Scheduled` |
 | [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 581 | every one of them inside the framework's own test mappers: `SELECT *`, unbounded selects, `${}` feature tests |
+| [newbee-ltd/newbee-mall](https://github.com/newbee-ltd/newbee-mall) | 98 | 4 | two leading-wildcard searches, and two goods-search conditions whose `#{}` sits inside quotes so it never binds |
 
 The mall run found a real bug: `@Scheduled(cron = …)` on a **private** method in
 `OrderTimeOutCancelTask`, which Spring will not invoke. That task does not run.
@@ -266,7 +270,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 129 tests
+npm run typecheck && npm test    # 131 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
