@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.12 — 2026-09-22
+
+### Fixed
+
+- **The default run reported a clean pass over an untracked file.** `git diff
+  HEAD` — which is what "review my changes" runs — cannot see a path that has
+  never been `git add`ed, so the first thing a new user does:
+
+  ```text
+  $ vim src/main/java/demo/FreshService.java   # @Transactional, called via this.
+  $ spring-review
+  ✔ spring-review: 0 file(s) reviewed, no findings
+  ```
+
+  Untracked `.java` / `.xml` files are now reviewed with every line treated as
+  added, `--exclude` still applies to them, and `--diff` / `--patch` do not pick
+  them up — those describe history, and a checkout's untracked build output is
+  not part of it.
+
 ## 0.1.11 — 2026-09-22
 
 ### Fixed

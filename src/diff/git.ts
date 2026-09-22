@@ -71,6 +71,28 @@ export async function getDiff(source: DiffSource, cwd: string): Promise<Collecte
   return { files: parseDiff(out), after: source.kind === "range" ? source.after : undefined };
 }
 
+/**
+ * Source files git is not tracking yet. `git diff HEAD` cannot see them, so the
+ * default run — "review what I am working on" — answered `no findings` with a
+ * brand-new service class sitting untracked in the tree, which is the first thing
+ * a new user does. Paths come back relative to the repository root even when git
+ * is invoked from a subdirectory.
+ */
+export async function untrackedFiles(cwd: string): Promise<string[]> {
+  const out = await gitRaw(
+    ["status", "--porcelain", "-z", "--untracked-files=all", "--no-renames"],
+    cwd,
+  );
+  if (out === null) return [];
+  const paths: string[] = [];
+  for (const entry of out.split("\0")) {
+    if (!entry.startsWith("?? ")) continue;
+    const path = entry.slice(3).trim().replace(/\\/g, "/");
+    if (path && !paths.includes(path)) paths.push(path);
+  }
+  return paths;
+}
+
 /** `git show <ref>:<path>` — returns null when the blob does not exist there. */
 export async function readAtRef(ref: string, path: string, cwd: string): Promise<string | null> {
   return gitRaw(["show", `${ref}:${path}`], cwd);

@@ -44,7 +44,7 @@ node dist/cli.js --patch examples/sample.patch
 ## 用法
 
 ```bash
-spring-review                              # 工作区未提交变更
+spring-review                              # 工作区未提交变更，含没 add 过的新文件
 spring-review --diff origin/main..HEAD     # 指定提交范围
 spring-review --staged
 spring-review --file src/main/java/demo/UserService.java
@@ -59,6 +59,8 @@ spring-review --patch pr.patch --format github
 patch 的上下文和它声称修改的文件对不上时，同样会点名：审查退回到 patch 自己的文本，
 因为拿新增行的行号去评一段无关代码，产出的正是那种没人该信的结果。
 
+默认模式会把从没 `git add` 过的新文件一起看，因为对第一次跑的人来说，"看我改的东西"
+里那个新类就是主角；`--diff` 和 `--patch` 不看它们，那两者描述的是历史。
 只报新增行上的问题，存量代码不会翻出来骚扰你。
 其他参数：`--min-severity error|warn|info`、`--exclude '**/generated/**'`、
 `--disable SPR005`、`--experimental`、`--list-rules`。仓库级配置放
@@ -232,7 +234,7 @@ mybatis-3 是第一个带真实 MyBatis XML 的代码库，它又带来了四个
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 135 个测试
+npm run typecheck && npm test    # 136 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

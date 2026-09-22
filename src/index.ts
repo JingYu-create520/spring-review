@@ -1,5 +1,5 @@
 import { getDiff, type DiffSource } from "./diff/git.js";
-import { unitsFromDiff, unitFromFile, expandReviewInputs } from "./diff/collect.js";
+import { unitsFromDiff, unitFromFile, expandReviewInputs, untrackedDiffFiles } from "./diff/collect.js";
 import { attachCompanions, buildNamespaceIndex } from "./diff/companion.js";
 import { reviewUnits } from "./rules/engine.js";
 import { rules as allRules, listRules } from "./rules/index.js";
@@ -37,7 +37,12 @@ export async function reviewDiff(
   if (error) {
     return { findings: [], units: 0, skipped: [{ path: "-", reason: error }], hitRules: [] };
   }
-  const { units, skipped } = await unitsFromDiff(files, {
+  // The working-tree mode means "review what I am working on", and a file that
+  // has never been `git add`ed is exactly that. `git diff HEAD` cannot see it, so
+  // without this a first run on a fresh class reported a clean pass.
+  const all =
+    source.kind === "worktree" ? [...files, ...(await untrackedDiffFiles(cwd))] : files;
+  const { units, skipped } = await unitsFromDiff(all, {
     cwd,
     after,
     exclude: merged.exclude,

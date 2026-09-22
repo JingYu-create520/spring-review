@@ -50,7 +50,7 @@ Below, `spring-review` means either of those two CLIs.
 ## Usage
 
 ```bash
-spring-review                              # uncommitted changes
+spring-review                              # uncommitted changes, incl. new files
 spring-review --diff origin/main..HEAD     # a commit range
 spring-review --staged
 spring-review --file src/main/java/demo/UserService.java
@@ -67,7 +67,10 @@ match the file it claims to change is named the same way: the review falls back 
 the patch's own lines, because scoring added numbers against unrelated code
 produces the one result nobody should trust.
 
-Only added lines are reported, so existing code does not come back to haunt you.
+The default mode covers files that have never been `git add`ed, because a new
+class is what "review my changes" means on the first run; `--diff` and `--patch` do
+not, since they describe history. Only added lines are reported, so existing code
+does not come back to haunt you.
 Other flags: `--min-severity error|warn|info`, `--exclude '**/generated/**'`,
 `--disable SPR005`, `--experimental`, `--list-rules`. A repo can keep its own
 settings in `.spring-review.json` (`exclude`, `disable`, `minSeverity`).
@@ -270,7 +273,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 135 tests
+npm run typecheck && npm test    # 136 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

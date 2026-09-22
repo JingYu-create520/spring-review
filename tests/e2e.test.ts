@@ -227,6 +227,50 @@ describe("reviewDiff against a real repository", () => {
     await git(["reset", "-q", "HEAD", "--", "README.md"], repo);
     await rm(join(repo, "README.md"), { force: true });
   });
+  it("reviews untracked source files when the working tree is the target", async () => {
+    // `git diff HEAD` cannot see a file that was never added, so the default run
+    // — the first thing anybody tries — answered "no findings" while a brand-new
+    // service with a broken @Transactional sat in the tree.
+    const dir = await mkdtemp(join(tmpdir(), "sr-untracked-"));
+    try {
+      await git(["init", "-q", "-b", "main"], dir);
+      await git(["config", "user.email", "test@example.com"], dir);
+      await git(["config", "user.name", "test"], dir);
+      await writeFile(join(dir, "README.md"), "hello\n");
+      await git(["add", "README.md"], dir);
+      await git(["commit", "-q", "-m", "chore: baseline"], dir);
+
+      await mkdir(join(dir, "src/main/java/demo"), { recursive: true });
+      await writeFile(
+        join(dir, "src/main/java/demo/FreshService.java"),
+        [
+          "package demo;",
+          "import org.springframework.stereotype.Service;",
+          "import org.springframework.transaction.annotation.Transactional;",
+          "@Service",
+          "public class FreshService {",
+          "    public void go() {",
+          "        this.tx();",
+          "    }",
+          "    @Transactional public void tx() throws java.io.IOException { }",
+          "}",
+          "",
+        ].join("\n"),
+      );
+
+      const worktree = await reviewDiff({ kind: "worktree" }, dir, OPTS);
+      expect(worktree.findings.map((f) => f.rule)).toContain("SPR001");
+      expect(worktree.findings.every((f) => f.file.endsWith("FreshService.java"))).toBe(true);
+
+      // A range describes history, so whatever is merely untracked is not part of
+      // it — including a checkout's build output.
+      const range = await reviewDiff({ kind: "range", range: "HEAD~1..HEAD" }, dir, OPTS);
+      expect(range.units).toBe(0);
+      expect(range.findings).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 afterAll(async () => {

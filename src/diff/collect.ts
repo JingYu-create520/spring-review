@@ -2,7 +2,7 @@ import { opendir, readFile, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { globToRegExp, normalizeNewlines, matchesAny } from "../util/text.js";
 import { reconstructFile, type DiffFile } from "./parse.js";
-import { readAtRef } from "./git.js";
+import { readAtRef, untrackedFiles } from "./git.js";
 import type { ContentSource, ReviewUnit } from "../types.js";
 
 export interface CollectOptions {
@@ -223,6 +223,34 @@ export async function unitsFromDiff(files: DiffFile[], opts: CollectOptions): Pr
   }
 
   return { units, skipped };
+}
+
+/**
+ * Untracked source files as pseudo-diffs: every line of a new file is an added
+ * line, and the content is read from disk like any other worktree unit. Only the
+ * default working-tree mode asks for this — a range or a patch describes history,
+ * and whatever happens to be untracked in a checkout is not part of it.
+ */
+export async function untrackedDiffFiles(cwd: string): Promise<DiffFile[]> {
+  const out: DiffFile[] = [];
+  for (const path of await untrackedFiles(cwd)) {
+    if (!isReviewable(path)) continue;
+    const raw = await readFile(join(cwd, ...path.split("/")), "utf8").catch(() => null);
+    if (raw === null) continue;
+    const lines = normalizeNewlines(raw).split("\n");
+    // A trailing newline is not a line of code.
+    if (lines[lines.length - 1] === "") lines.pop();
+    const file: DiffFile = {
+      path,
+      status: "added",
+      hunks: 1,
+      addedLines: new Map(),
+      contextLines: new Map(),
+    };
+    lines.forEach((text, index) => file.addedLines.set(index + 1, text));
+    out.push(file);
+  }
+  return out;
 }
 
 /** Whole-file mode (`--file`): every line is reportable. */
