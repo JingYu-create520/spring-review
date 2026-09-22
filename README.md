@@ -86,7 +86,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: JingYu-create520/spring-review@v0
         with:
@@ -115,7 +115,7 @@ sit on the Security tab instead of scrolling past:
 
 ```yaml
 - run: spring-review --diff origin/main..HEAD --format sarif > spring-review.sarif
-- uses: github/codeql-action/upload-sarif@v3
+- uses: github/codeql-action/upload-sarif@v4
   with: { sarif_file: spring-review.sarif, category: spring-review }
 ```
 
