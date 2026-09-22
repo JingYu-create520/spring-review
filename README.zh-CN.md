@@ -241,8 +241,8 @@ mapper。
 
 仍然没被验证到的是：请求参数直接流进 `${}` 的那种代码。RuoYi 的值来自切面和生成器，
 而要把它们和调用方可控的字符串区分开，需要跨文件追一个值的来源 —— 那是
-[#2](https://github.com/JingYu-create520/spring-review/issues/2)，不是这条规则。
-五个语料里的每一处 `${}` 都被报了出来，但没有一处已知真的带着请求参数。
+[#5](https://github.com/JingYu-create520/spring-review/issues/5)，不是这条规则。
+六个语料里的每一处 `${}` 都被报了出来，但没有一处已知真的带着请求参数。
 
 ## 它做不到什么
 
@@ -250,7 +250,10 @@ mapper。
 的 Bean 装配、自定义元注解（`@MyService` 这类）、通过 `@Bean` 注册的类，它都看不见
 （[#2](https://github.com/JingYu-create520/spring-review/issues/2)）；从别的 mapper
 文件 `<include>` 进来的 `<sql>` 片段，对使用它的语句也是不可见的
-（[#3](https://github.com/JingYu-create520/spring-review/issues/3)）。
+（[#3](https://github.com/JingYu-create520/spring-review/issues/3)）；`${}` 背后的值
+能不能被请求碰到，它同样看不出来
+（[#5](https://github.com/JingYu-create520/spring-review/issues/5)）—— 每一处都会报，
+要放过某一处就在现场写 `// spring-review:disable MYB001`。
 
 结构解析不出来时，规则保持沉默，并在 `skipped` 里说明原因。这发生在它读不懂的 Java
 上，也发生在 `--patch` 指向你本地没有的文件、或者 patch 的行号和磁盘上的文件对不上

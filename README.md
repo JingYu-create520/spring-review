@@ -279,9 +279,10 @@ conditions arrive as `<include refid="Example_Where_Clause"/>`.
 What is still not proven: a request parameter flowing straight into a `${}`.
 RuoYi's values come from an aspect and a generator, and telling those apart from a
 caller-controlled string needs the source of a value across files — which is
-[#2](https://github.com/JingYu-create520/spring-review/issues/2), not this rule.
-Every `${}` in all five corpora was reported; none of them is known to have
-carried a request parameter.
+[#5](https://github.com/JingYu-create520/spring-review/issues/5), not this rule.
+Every `${}` in all six corpora was reported; none of them is known to have carried
+a request parameter, and that distinction is not knowable from one file
+([#5](https://github.com/JingYu-create520/spring-review/issues/5)).
 
 ## What it does not do
 
@@ -291,7 +292,10 @@ custom meta-annotations like `@MyService`, and `@Bean`-registered classes are
 invisible to it ([#2](https://github.com/JingYu-create520/spring-review/issues/2)),
 and a `<sql>` fragment borrowed from another mapper file is not visible to the
 statement that includes it
-([#3](https://github.com/JingYu-create520/spring-review/issues/3)).
+([#3](https://github.com/JingYu-create520/spring-review/issues/3)). Nor can it tell
+whether the value behind a `${}` is reachable from a request
+([#5](https://github.com/JingYu-create520/spring-review/issues/5)): every one is
+reported, and `// spring-review:disable MYB001` at the site is the escape hatch.
 
 When structure does not resolve, the rule stays quiet and says so under `skipped`.
 That happens on Java it cannot follow, on `--patch` input for a file you do not have
