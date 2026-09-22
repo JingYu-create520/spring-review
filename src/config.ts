@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { ReviewOptions, Severity } from "./types.js";
 
@@ -26,11 +26,44 @@ export type SpringReviewConfig = z.infer<typeof ConfigSchema>;
 
 export const CONFIG_FILE_NAMES = [".spring-review.json", "spring-review.config.json"];
 
+/**
+ * The directories to look in, nearest first: the run directory and its ancestors,
+ * stopping after the repository root so a config in `$HOME` or `/` is never picked
+ * up by accident.
+ *
+ * Only looking in the run directory was a gate bug, not a convenience one: in a
+ * multi-module repository the team config sits at the root, and `cd backend &&
+ * spring-review` — the way most people in that repo run it — honoured none of it.
+ * `exclude` and `minSeverity` silently stopped applying, which is the same failure
+ * as accepting an invalid config. The *nearest* file wins outright rather than
+ * merging upwards, because a merged config is a file nobody wrote.
+ */
+/** git prints forward slashes even on Windows; `resolve` gives back the platform's. */
+function samePath(a: string, b: string): boolean {
+  return a.replace(/\\/g, "/").replace(/\/+$/, "") === b.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+export function configSearchPath(cwd: string, stopAt?: string): string[] {
+  const start = resolve(cwd);
+  const stop = stopAt ? resolve(stopAt) : undefined;
+  const dirs: string[] = [];
+  let dir = start;
+  for (let guard = 0; guard < 64; guard++) {
+    dirs.push(dir);
+    if (stop && samePath(dir, stop)) break;
+    const parent = dirname(dir);
+    if (parent === dir) break; // the filesystem root
+    dir = parent;
+  }
+  return dirs.flatMap((d) => CONFIG_FILE_NAMES.map((n) => join(d, n)));
+}
+
 export async function loadConfig(
   cwd: string,
   explicit?: string,
+  stopAt?: string,
 ): Promise<{ config: SpringReviewConfig; path?: string; error?: string }> {
-  const candidates = explicit ? [explicit] : CONFIG_FILE_NAMES.map((n) => join(cwd, n));
+  const candidates = explicit ? [explicit] : configSearchPath(cwd, stopAt);
   for (const candidate of candidates) {
     const raw = await readFile(candidate, "utf8").catch(() => null);
     if (raw === null) continue;

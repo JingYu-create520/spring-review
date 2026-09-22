@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { Command } from "commander";
-import { reviewDiff, reviewPaths } from "./index.js";
+import { repoRoot, reviewDiff, reviewPaths } from "./index.js";
 import { listRules, rules as allRules } from "./rules/index.js";
 import { loadConfig, mergeOptions } from "./config.js";
 import { MockProvider, providerFromEnv } from "./llm/provider.js";
@@ -100,7 +100,13 @@ export async function main(argv: string[], io: CliIo = {}): Promise<number> {
   }
 
   const cwd = String(opts["cwd"] ?? process.cwd());
-  const { config, error: configError } = await loadConfig(cwd, opts["config"] as string | undefined);
+  // The team config is looked for up to the repository root, so a module directory
+  // in a multi-module repo still finds the file the team wrote.
+  const { config, error: configError } = await loadConfig(
+    cwd,
+    opts["config"] as string | undefined,
+    await repoRoot(cwd),
+  );
   if (configError) {
     // Not "ignoring invalid config". `disable` and `exclude` are how a team makes
     // this gate livable, so a file that is quietly discarded changes what the
@@ -126,7 +132,10 @@ export async function main(argv: string[], io: CliIo = {}): Promise<number> {
     minSeverity,
     exclude: (opts["exclude"] as string[] | undefined) ?? [],
     disabledRules: (opts["disable"] as string[] | undefined) ?? [],
-    experimental: Boolean(opts["experimental"]),
+    // Absent means "the config decides"; `Boolean(undefined)` would be
+    // `false`, and a team that turned experimental rules on in
+    // .spring-review.json would never see them.
+    experimental: opts["experimental"] === undefined ? undefined : Boolean(opts["experimental"]),
   });
 
   // A rule id that matches nothing is not a no-op, it is a wrong expectation:

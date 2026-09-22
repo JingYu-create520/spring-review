@@ -13,6 +13,7 @@ export { parseDiff, reconstructFile } from "./diff/parse.js";
 export { analyzeJava, maskJavaLiterals } from "./analyze/java.js";
 export { analyzeMapperXml } from "./analyze/xml.js";
 export { loadConfig, mergeOptions } from "./config.js";
+export { repoRoot } from "./diff/git.js";
 export { MockProvider, OpenAiCompatProvider, providerFromEnv } from "./llm/provider.js";
 export { renderGithub, renderJson, renderTerminal } from "./report/index.js";
 

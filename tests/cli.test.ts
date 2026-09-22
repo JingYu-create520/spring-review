@@ -5,6 +5,10 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const run = promisify(execFile);
 import { main } from "../src/cli.js";
 import { listRules } from "../src/rules/index.js";
 import { renderGithub, renderJson, renderSarif, renderTerminal } from "../src/report/index.js";
@@ -334,5 +338,111 @@ describe("report renderers", () => {
       ).runs[0].results[0].level;
     expect(forSeverity("warn")).toBe("warning");
     expect(forSeverity("info")).toBe("note");
+  });
+});
+
+describe("the team config is found from wherever the tool is run", () => {
+  // A multi-module repository keeps `.spring-review.json` at the root, and the way
+  // most people in it run the tool is `cd backend && spring-review`. Reading the
+  // config only from the run directory meant `disable`, `exclude` and `minSeverity`
+  // silently stopped applying there — the same failure as accepting an invalid
+  // config, which this tool refuses outright.
+  const SELF_CALL = [
+    "package demo;",
+    "import org.springframework.stereotype.Service;",
+    "import org.springframework.transaction.annotation.Transactional;",
+    "@Service",
+    "public class ApiService {",
+    "    public void caller() { this.commit(); }",
+    "    @Transactional",
+    "    public void commit() {}",
+    "}",
+    "",
+  ].join("\n");
+
+  const MUTABLE_STATE = [
+    "package demo;",
+    "import org.springframework.stereotype.Service;",
+    "@Service",
+    "public class Counters {",
+    "    private int hits = 0;",
+    "    public void hit() { hits++; }",
+    "}",
+    "",
+  ].join("\n");
+
+  /** A repository-shaped `<dir>/backend/src`, with optional configs at either level. */
+  async function moduleRepo(options: {
+    root?: string;
+    module?: string;
+    source?: string;
+    git?: boolean;
+  } = {}) {
+    const dir = await mkdtemp(join(tmpdir(), "sr-cfg-"));
+    const backend = join(dir, "backend");
+    await mkdir(join(backend, "src"), { recursive: true });
+    await writeFile(join(backend, "src", "ApiService.java"), options.source ?? SELF_CALL);
+    if (options.root !== undefined) {
+      await writeFile(join(dir, ".spring-review.json"), options.root);
+    }
+    if (options.module !== undefined) {
+      await writeFile(join(backend, ".spring-review.json"), options.module);
+    }
+    if (options.git) {
+      await run("git", ["init", "-q", "-b", "main"], { cwd: dir });
+    }
+    return { dir, backend };
+  }
+
+  it("applies a root config to a run from a module directory", async () => {
+    const { dir, backend } = await moduleRepo({ root: '{ "disable": ["SPR001"] }' });
+    const control = await moduleRepo({});
+    const without = await cli("--cwd", control.backend, "--file", "src");
+    expect(without.out).toContain("SPR001");
+    const honoured = await cli("--cwd", backend, "--file", "src");
+    expect(honoured.out).not.toContain("SPR001");
+    await rm(dir, { recursive: true, force: true });
+    await rm(control.dir, { recursive: true, force: true });
+  });
+
+  it("stops at the repository root", async () => {
+    // A file one level above the repository is somebody else's decision, not this
+    // project's configuration — the same reason `$HOME` is not searched.
+    const outer = await mkdtemp(join(tmpdir(), "sr-cfg-outside-"));
+    await writeFile(join(outer, ".spring-review.json"), '{ "disable": ["SPR001"] }');
+    const inside = await moduleRepo({ git: true });
+    const nested = join(outer, "repo");
+    await mkdir(join(nested, "backend", "src"), { recursive: true });
+    await writeFile(join(nested, "backend", "src", "ApiService.java"), SELF_CALL);
+    await run("git", ["init", "-q", "-b", "main"], { cwd: nested });
+    const fromRepo = await cli("--cwd", join(nested, "backend"), "--file", "src");
+    expect(fromRepo.out).toContain("SPR001");
+    await rm(outer, { recursive: true, force: true });
+    await rm(inside.dir, { recursive: true, force: true });
+  });
+
+  it("lets a nearer config win outright", async () => {
+    // Merging upwards would produce a configuration nobody wrote down: the file
+    // closest to the run directory replaces the one above it.
+    const { dir, backend } = await moduleRepo({
+      root: '{ "disable": ["SPR001"] }',
+      module: '{ "minSeverity": "error" }',
+    });
+    const result = await cli("--cwd", backend, "--file", "src", "--format", "json");
+    expect(result.out).toContain("SPR001");
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("does not read an absent --experimental as an instruction to turn it off", async () => {
+    // `Boolean(undefined)` is `false`, and `false ?? config.experimental` keeps it,
+    // so `"experimental": true` in the file could never take effect.
+    const on = await moduleRepo({ root: '{ "experimental": true }', source: MUTABLE_STATE });
+    const found = await cli("--cwd", on.backend, "--file", "src", "--format", "json");
+    expect(found.out).toContain("SPR005");
+    const off = await moduleRepo({ source: MUTABLE_STATE });
+    const skipped = await cli("--cwd", off.backend, "--file", "src", "--format", "json");
+    expect(skipped.out).not.toContain("SPR005");
+    await rm(on.dir, { recursive: true, force: true });
+    await rm(off.dir, { recursive: true, force: true });
   });
 });

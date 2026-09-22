@@ -7,6 +7,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../src/mcp/index.js";
 import { readFileSync } from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtures = join(here, "fixtures");
@@ -173,3 +175,90 @@ function waitFor(lines: string[], id: number): Promise<string> {
     }, 25);
   });
 }
+
+describe("the MCP server honours the repository's own configuration", () => {
+  // An agent asking about a repository and a CI job checking the same commit must
+  // not disagree because one of them read `.spring-review.json` and the other did
+  // not. The rules a team turned off are off everywhere, and a config that cannot
+  // be parsed is an error the caller sees rather than a silent default.
+  const SELF_CALL = [
+    "package demo;",
+    "import org.springframework.stereotype.Service;",
+    "import org.springframework.transaction.annotation.Transactional;",
+    "@Service",
+    "public class ApiService {",
+    "    public void caller() { this.commit(); }",
+    "    @Transactional",
+    "    public void commit() {}",
+    "}",
+    "",
+  ].join("\n");
+
+  async function project(config?: string): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "sr-mcp-cfg-"));
+    await mkdir(join(dir, "src"), { recursive: true });
+    await writeFile(join(dir, "src", "ApiService.java"), SELF_CALL);
+    if (config !== undefined) await writeFile(join(dir, ".spring-review.json"), config);
+    return dir;
+  }
+
+  const hitRules = async (dir: string) => {
+    const client = await linkedClient();
+    try {
+      const result = await client.callTool({
+        name: "review_file",
+        arguments: { path: "src/ApiService.java", cwd: dir },
+      });
+      return { body: text(result), payload: JSON.parse(text(result)) as { summary: { hitRules: string[] } } };
+    } finally {
+      await client.close();
+    }
+  };
+
+  it("drops a rule the project disabled", async () => {
+    const plain = await project();
+    expect((await hitRules(plain)).payload.summary.hitRules).toContain("SPR001");
+    const disabled = await project('{ "disable": ["SPR001"] }');
+    const after = await hitRules(disabled);
+    expect(after.payload.summary.hitRules).not.toContain("SPR001");
+    await rm(plain, { recursive: true, force: true });
+    await rm(disabled, { recursive: true, force: true });
+  });
+
+  it("says so when the config cannot be read", async () => {
+    const broken = await project("{ this is not json }");
+    const client = await linkedClient();
+    try {
+      const result = await client.callTool({
+        name: "review_file",
+        arguments: { path: "src/ApiService.java", cwd: broken },
+      });
+      expect((result as { isError?: boolean }).isError).toBe(true);
+      expect(text(result)).toContain("invalid config");
+    } finally {
+      await client.close();
+      await rm(broken, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the MCP server takes the paths an agent actually passes", () => {
+  // Agents call `review_file` with a full filesystem path and no `cwd`, because
+  // that is what they have. Joining it onto the server's directory answered
+  // "not readable", which reads to the model as "this file is fine".
+  it("reviews an absolute path without a cwd", async () => {
+    const file = resolve(here, "fixtures", "java", "BadUserService.java");
+    const client = await linkedClient();
+    try {
+      const result = await client.callTool({ name: "review_file", arguments: { path: file } });
+      const payload = JSON.parse(text(result)) as {
+        summary: { hitRules: string[] };
+        findings: Array<{ file: string }>;
+      };
+      expect(payload.summary.hitRules).toContain("SPR001");
+      expect(payload.findings[0]?.file.replace(/\\/g, "/")).toContain("BadUserService.java");
+    } finally {
+      await client.close();
+    }
+  });
+});

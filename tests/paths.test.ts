@@ -102,3 +102,43 @@ describe("whole-file mode accepts directories and globs, not just single files",
     expect(one.findings.map((f) => f.rule)).toContain("SPR001");
   });
 });
+
+describe("whole-file mode accepts absolute paths, wherever it was started", () => {
+  // `spring-review C:\work\repo\src`, an IDE passing a full path, an agent calling
+  // `review_file` with an absolute path and no `cwd` — every one of those joined the
+  // absolute path onto the run directory and reported "not readable", which reads
+  // like a broken repository rather than a path the tool could not open.
+  const elsewhere = join(sandbox, "..", "not-a-repo");
+
+  it("reviews an absolute directory argument", async () => {
+    const result = await reviewPaths([join(sandbox, "src")], elsewhere, OPTS);
+    expect(result.units).toBe(2);
+    expect(result.findings.map((f) => f.rule)).toContain("SPR001");
+    expect(
+      result.findings.every((f) => f.file.replace(/\\/g, "/").includes("src/main/java/AService.java")),
+    ).toBe(true);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("reviews an absolute single-file argument", async () => {
+    const file = join(sandbox, "src", "main", "java", "AService.java");
+    const result = await reviewPaths([file], elsewhere, OPTS);
+    expect(result.units).toBe(1);
+    expect(result.findings[0]?.file).toBe(file.split("\\").join("/"));
+  });
+
+  it("keeps relative arguments relative, as before", async () => {
+    const result = await reviewPaths(["src/main/java"], sandbox, OPTS);
+    expect(result.units).toBe(1);
+    expect(result.findings[0]?.file).toBe("src/main/java/AService.java");
+  });
+
+  it("expands a glob whose base is absolute", async () => {
+    const { files, skipped } = await expandReviewInputs(
+      [join(sandbox, "src", "**", "*.java")],
+      elsewhere,
+    );
+    expect(files).toHaveLength(2);
+    expect(skipped).toEqual([]);
+  });
+});

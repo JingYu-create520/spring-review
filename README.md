@@ -73,7 +73,11 @@ not, since they describe history. Only added lines are reported, so existing cod
 does not come back to haunt you.
 Other flags: `--min-severity error|warn|info`, `--exclude '**/generated/**'`,
 `--disable SPR005`, `--experimental`, `--list-rules`. A repo can keep its own
-settings in `.spring-review.json` (`exclude`, `disable`, `minSeverity`).
+settings in `.spring-review.json` — `exclude`, `disable`, `only`, `minSeverity`,
+`experimental`. It is looked for in the run directory and then upwards, stopping at
+the repository root, so a module in a multi-module build still gets the file the team
+wrote; the nearest one wins outright rather than being merged with the one above it,
+and a file that cannot be parsed is exit 2 rather than a quietly default run.
 
 To silence one finding, say why:
 
@@ -339,7 +343,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 165 tests
+npm run typecheck && npm test    # 176 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

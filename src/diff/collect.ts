@@ -1,5 +1,5 @@
 import { opendir, readFile, stat } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { isAbsolute, join, sep } from "node:path";
 import { globToRegExp, normalizeNewlines, matchesAny } from "../util/text.js";
 import { reconstructFile, type DiffFile } from "./parse.js";
 import { readAtRef, untrackedFiles } from "./git.js";
@@ -33,7 +33,12 @@ export function isReviewable(path: string): boolean {
 /** Directories never worth descending into, matched against the relative path. */
 const PRUNED_DIR = /(?:^|\/)(?:target|build|out|node_modules|generated|\.git)(?:\/|$)/i;
 
-/** Every reviewable file under `dirRel` (relative to `cwd`, posix separators). */
+/** The directory a walked path names: absolute inputs stay absolute. */
+function fsPath(cwd: string, rel: string): string {
+  return isAbsolute(rel) ? rel : join(cwd, ...rel.split("/"));
+}
+
+/** Every reviewable file under `dirRel` (relative to `cwd`, or absolute). */
 async function walkDir(dirRel: string, cwd: string): Promise<string[]> {
   const found: string[] = [];
   const stack: string[] = [dirRel === "." ? "" : dirRel];
@@ -41,7 +46,7 @@ async function walkDir(dirRel: string, cwd: string): Promise<string[]> {
     const cur = stack.pop() as string;
     let entries: Awaited<ReturnType<typeof opendir>>;
     try {
-      entries = await opendir(cur === "" ? cwd : join(cwd, ...cur.split("/")));
+      entries = await opendir(cur === "" ? cwd : fsPath(cwd, cur));
     } catch {
       continue; // unreadable subtree: skip it rather than failing the whole run
     }
@@ -96,7 +101,7 @@ export async function expandReviewInputs(
       continue;
     }
 
-    const st = await stat(join(cwd, ...rel.split("/")).replace(/\\/g, sep)).catch(() => null);
+    const st = await stat(fsPath(cwd, rel).replace(/\\/g, sep)).catch(() => null);
     if (st === null) {
       skipped.push({ path: raw, reason: "not readable" });
       continue;
@@ -269,7 +274,7 @@ export async function untrackedDiffFiles(
 export async function unitFromFile(path: string, cwd: string): Promise<ReviewUnit | null> {
   const rel = path.split(sep).join("/").replace(/^\.\//, "");
   if (!isReviewable(rel)) return null;
-  const raw = await readFile(join(cwd, ...rel.split("/")), "utf8").catch(() => null);
+  const raw = await readFile(fsPath(cwd, rel), "utf8").catch(() => null);
   if (raw === null) return null;
   return {
     path: rel,

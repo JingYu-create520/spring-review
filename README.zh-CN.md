@@ -64,7 +64,10 @@ patch 的上下文和它声称修改的文件对不上时，同样会点名：�
 只报新增行上的问题，存量代码不会翻出来骚扰你。
 其他参数：`--min-severity error|warn|info`、`--exclude '**/generated/**'`、
 `--disable SPR005`、`--experimental`、`--list-rules`。仓库级配置放
-`.spring-review.json`（`exclude` / `disable` / `minSeverity`）。
+`.spring-review.json`（`exclude` / `disable` / `only` / `minSeverity` /
+`experimental`）。查找顺序是从当前目录逐级向上，到仓库根为止 —— 多模块工程里
+`cd backend` 之后照样能拿到团队写在根上的那份；就近的那份整体生效、不与上层合并，
+文件解析不了则是 exit 2，不会悄悄按默认值跑。
 
 要压掉某一条，就把理由写上：
 
@@ -286,7 +289,7 @@ JeecgBoot 带来四个修复，外加一个语料扫不出来的 bug。它的
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 165 个测试
+npm run typecheck && npm test    # 176 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

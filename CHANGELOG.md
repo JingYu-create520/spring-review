@@ -4,6 +4,59 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.15 — 2026-09-22
+
+### Fixed
+
+- **`.spring-review.json` was read only from the run directory.** In a multi-module
+  repository the team file sits at the root, and the way most people there run the
+  tool is `cd backend && spring-review` — which honoured none of it:
+
+  ```text
+  v0.1.14, from backend/:  findings: ["SPR001"]   (root config says disable SPR001)
+  v0.1.15, from backend/:  findings: []
+  ```
+
+  `exclude` and `minSeverity` were off for the same reason, so a gate could fail a
+  build on warnings the team had filtered out, or fire on generated code the team
+  had excluded. The file is now looked for in the run directory and upwards,
+  stopping at the repository root — a config in `$HOME` is not this project's
+  configuration. The nearest file wins outright rather than merging with the one
+  above it, because a merged config is a file nobody wrote.
+- **An absent `--experimental` was sent as `false`.** `Boolean(undefined)` is
+  `false`, and `flags.experimental ?? config.experimental` keeps a `false`, so
+  `"experimental": true` in the config could never take effect — the one key whose
+  whole purpose is to turn a rule on. Now an absent flag leaves the decision to the
+  file, and passing `--experimental` still wins.
+- **The MCP server ignored the project configuration entirely.** An agent asking
+  about a repository and a CI job checking the same commit could disagree because
+  only one of them read `.spring-review.json`: rules the team disabled came back as
+  findings. `review_file` and `review_diff` now resolve the same config the CLI
+  does, with the request's own fields winning, and an unparseable file is returned
+  as a tool error rather than reviewed with defaults.
+
+- **An absolute path argument was reported as unreadable.** `spring-review C:\work\repo\src`,
+  an IDE passing a full filename, an agent calling `review_file` with an absolute path
+  and no `cwd` — all of them joined the absolute path onto the run directory and got
+  `not readable`, which reads as a broken repository rather than as a path the tool
+  could not open. Absolute files and directories are now used as given, relative ones
+  keep resolving against `--cwd`, and a glob with an absolute base expands. Verified
+  as parity: the same repository yields the same 50 findings through
+  `cd repo && spring-review .` and through `spring-review <absolute repo path>`.
+
+
+### Docs
+
+The config keys listed in both READMEs were `exclude` / `disable` / `minSeverity`;
+the file also accepts `only` and `experimental`. Now documented, along with where
+the file is searched for.
+
+### Tests
+
+165 → 176: discovery from a module directory, the repository-root boundary, nearest-wins,
+`experimental` from the file, four absolute-path cases, and three MCP ones (config
+honoured, config unreadable, absolute path with no `cwd`).
+
 ## 0.1.14 — 2026-09-22
 
 ### Fixed
