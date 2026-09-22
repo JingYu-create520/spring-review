@@ -23,6 +23,12 @@ semantic versioning, and `0.x` means "the rule set may still move".
   the `version` lifecycle (`scripts/sync-version.mjs`), so the string and the tag
   move together.
 
+### Removed
+
+- The Action's `token` input, dead since 0.1.0. Nothing in the step ever read it:
+  the annotations arrive because the runner parses the `::error` lines the CLI
+  prints, so there was no API call to authenticate.
+
 ### Added
 
 - `install-from` (`github` | `npm` | `local`) and `ref` inputs, defaulting to

@@ -116,8 +116,10 @@ sit on the Security tab instead of scrolling past:
   with: { sarif_file: spring-review.sarif, category: spring-review }
 ```
 
-This repo runs it against its own fixtures on every push to `main`; the Security tab
-currently holds 22 alerts.
+This repo runs it against its own fixtures on every push to `main`. The Security
+tab holds 21 open alerts; a 22nd closed itself when 0.1.2 stopped reporting the
+framework `${ew.customSqlSegment}` placeholder, because an upload that no longer
+lists a finding marks it fixed.
 
 ### MCP server
 
@@ -235,7 +237,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 115 tests
+npm run typecheck && npm test    # 116 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

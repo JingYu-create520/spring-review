@@ -44,10 +44,6 @@ inputs:
       or a full tarball URL. npm mode: a package version. Ignored by local mode.
     required: false
     default: latest
-  token:
-    description: Optional GITHUB_TOKEN; only needed for a private package in npm mode.
-    required: false
-    default: ""
 
 runs:
   using: composite
@@ -79,7 +75,6 @@ runs:
         SR_EXCLUDE: ${{ inputs.exclude }}
         SR_EXPERIMENTAL: ${{ inputs.experimental }}
         SR_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
-        SR_TOKEN: ${{ inputs.token }}
       run: |
         set -uo pipefail
         # GitHub runs composite steps with `bash -e`, which would abort the moment

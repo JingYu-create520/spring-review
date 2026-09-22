@@ -106,7 +106,9 @@ CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install
   with: { sarif_file: spring-review.sarif, category: spring-review }
 ```
 
-本仓库每次推 main 就会扫自己的 fixtures，Security 页现在有 22 条告警。
+本仓库每次推 main 就会扫自己的 fixtures，Security 页现在有 21 条未关闭的告警。第 22
+条自己变成了 fixed——0.1.2 不再对框架占位 `${ew.customSqlSegment}` 报规则，而一次
+上传里不再出现的告警会被自动关闭。
 
 ### MCP server
 
@@ -208,7 +210,7 @@ MyBatis Generator 自己生成的 `order by ${orderByClause}`，现在框架占�
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 115 个测试
+npm run typecheck && npm test    # 116 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
