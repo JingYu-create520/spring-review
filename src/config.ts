@@ -42,10 +42,13 @@ export async function loadConfig(
     }
     const result = ConfigSchema.safeParse(parsed);
     if (!result.success) {
+      // A strict-mode rejection has no path: its message already names the key.
       return {
         config: {},
         path: candidate,
-        error: `${candidate}: ${result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`,
+        error: `${candidate}: ${result.error.issues
+          .map((i) => [i.path.join("."), i.message].filter((part) => part).join(" "))
+          .join("; ")}`,
       };
     }
     return { config: result.data, path: candidate };

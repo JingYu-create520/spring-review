@@ -129,10 +129,13 @@ describe("CLI", () => {
       expect(configured.out).not.toContain("SPR001");
       expect(configured.code).toBe(0);
 
+      // Reading the config wrong is not a licence to enforce something else than
+      // the repository asked for: `disable` and `exclude` are what the gate is.
       await writeFile(join(dir, ".spring-review.json"), "{ not json");
       const broken = await cli("--cwd", dir, "--file", "src/S.java");
+      expect(broken.code).toBe(2);
       expect(broken.err).toContain("invalid config");
-      expect(broken.out).toContain("SPR001");
+      expect(broken.out).not.toContain("SPR001");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -153,6 +156,70 @@ describe("CLI", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("CLI refuses input it cannot honour", () => {
+  /** A directory with one error-severity file in it, plus an optional config. */
+  async function workspace(config?: string): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), "sr-cli-"));
+    await mkdir(join(dir, "src"), { recursive: true });
+    await writeFile(
+      join(dir, "src", "ApiService.java"),
+      [
+        "package demo;",
+        "import org.springframework.stereotype.Service;",
+        "import org.springframework.transaction.annotation.Transactional;",
+        "@Service",
+        "public class ApiService {",
+        "    @Transactional",
+        '    public void commit() throws java.io.IOException {',
+        '        throw new java.io.IOException("x");',
+        "    }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    if (config !== undefined) await writeFile(join(dir, ".spring-review.json"), config);
+    return dir;
+  }
+
+  it("an unknown --min-severity is a usage error, not a clean run", async () => {
+    // Comparing against a level that exists nowhere filtered every finding out,
+    // so a typo made the gate pass with exit 0 and "no findings".
+    const dir = await workspace();
+    const bad = await cli("--cwd", dir, "--file", "src", "--min-severity", "high");
+    expect(bad.code).toBe(2);
+    expect(bad.err).toContain('unknown --min-severity "high"');
+    expect(bad.out).not.toContain("no findings");
+
+    // Case is a typo, not a lie: `WARN` means warn.
+    const cased = await cli("--cwd", dir, "--file", "src", "--min-severity", "ERROR");
+    expect(cased.code).toBe(1);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("a --disable id that matches no rule is an error", async () => {
+    const dir = await workspace();
+    const { code, err } = await cli("--cwd", dir, "--file", "src", "--disable", "SPR5");
+    expect(code).toBe(2);
+    expect(err).toContain("no such rule: SPR5");
+    // The valid spelling still just works.
+    const ok = await cli("--cwd", dir, "--file", "src", "--disable", "spr002");
+    expect(ok.code).toBe(0);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("a broken .spring-review.json stops the run instead of being ignored", async () => {
+    const dir = await workspace('{"disables":["SPR001"],"exclude":123}');
+    const { code, err } = await cli("--cwd", dir, "--file", "src");
+    expect(code).toBe(2);
+    expect(err).toContain(".spring-review.json");
+    expect(err).toContain("Unrecognized key(s)");
+    expect(err).toContain("exclude Expected array");
+    // The strict-mode rejection has no path, and used to render as `:  Unrecognized`.
+    expect(err).not.toContain(":  ");
+    await rm(dir, { recursive: true, force: true });
   });
 });
 

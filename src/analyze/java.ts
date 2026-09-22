@@ -384,7 +384,10 @@ function parseMember(
       modifiers,
       returnType: returnType || undefined,
       params,
-      throwsTypes: splitTopLevel(throwsRaw).flatMap((s) => s.trim().split(".").map((p) => p.trim()).filter(Boolean)),
+      // As written, qualified or not: `looksChecked` matches the simple name at
+      // the end either way, and the finding has to name the exception the author
+      // wrote rather than each dot-separated piece of it.
+      throwsTypes: splitTopLevel(throwsRaw).map((s) => s.trim()).filter(Boolean),
       abstract: declarationOnly || modifiers.includes("abstract") || type.kind === "interface",
       start: segStart,
       bodyStart: blockStart,

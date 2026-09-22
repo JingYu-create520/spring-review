@@ -78,6 +78,28 @@ describe("SPR rules on the deliberately broken service", () => {
     expect(ruleLines(findings, "SPR001")).toEqual([lineOf(badSrc, "this.updateName(id, name);")]);
   });
 
+  it("SPR002 names the checked exception as the author wrote it", () => {
+    const src = [
+      "package demo;",
+      "import org.springframework.stereotype.Service;",
+      "import org.springframework.transaction.annotation.Transactional;",
+      "@Service",
+      "public class ApiService {",
+      "    @Transactional",
+      "    public void commit() throws java.io.IOException, IllegalStateException {",
+      '        throw new java.io.IOException("x");',
+      "    }",
+      "}",
+    ].join("\n");
+    const hit = run([unit("ApiService.java", src)]).find((f) => f.rule === "SPR002");
+    // The qualified name used to be split on its dots, which read as a list of
+    // three exceptions: `java, io, IOException`.
+    expect(hit?.message).toContain("java.io.IOException");
+    expect(hit?.message).not.toContain("java, io,");
+    // A runtime exception in the same clause is not a rollback gap.
+    expect(hit?.message).not.toContain("IllegalStateException");
+  });
+
   it("SPR002 flags the checked-exception transactional method without rollbackFor", () => {
     expect(ruleLines(findings, "SPR002")).toEqual([annoOf(badSrc, "public void importUsers")]);
   });

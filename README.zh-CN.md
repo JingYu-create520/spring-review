@@ -18,7 +18,7 @@
 
 > [English README](./README.md) · [规则](#规则) · [为什么不直接问大模型](#为什么不直接问大模型) · [它做不到什么](#它做不到什么)
 
-退出码：`0` 没有阻塞问题，`1` 存在 error 级发现，`2` 工具自己没跑起来。
+退出码：`0` 没有阻塞问题，`1` 存在 error 级发现，`2` 工具自己没跑起来——包括它没法照做的参数和配置文件，所以填错的严重级别会红着退出，不会变成一个干净通过。
 
 ## 安装
 
@@ -229,7 +229,7 @@ mybatis-3 是第一个带真实 MyBatis XML 的代码库，它又带来了四个
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 125 个测试
+npm run typecheck && npm test    # 129 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

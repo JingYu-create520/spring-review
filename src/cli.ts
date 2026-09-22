@@ -10,6 +10,7 @@ import type { Severity } from "./types.js";
 import { PACKAGE_VERSION } from "./version.js";
 
 const FORMATS = new Set<ReportFormat>(["table", "json", "github", "sarif"]);
+const SEVERITIES = new Set<Severity>(["error", "warn", "info"]);
 
 export interface CliIo {
   stdout?: (chunk: string) => void;
@@ -100,14 +101,48 @@ export async function main(argv: string[], io: CliIo = {}): Promise<number> {
 
   const cwd = String(opts["cwd"] ?? process.cwd());
   const { config, error: configError } = await loadConfig(cwd, opts["config"] as string | undefined);
-  if (configError) fail(`spring-review: ignoring invalid config — ${configError}\n`);
+  if (configError) {
+    // Not "ignoring invalid config". `disable` and `exclude` are how a team makes
+    // this gate livable, so a file that is quietly discarded changes what the
+    // build enforces without anyone deciding that — the same failure as a flag
+    // typo that turns the run clean.
+    fail(`spring-review: invalid config — ${configError}\n`);
+    return 2;
+  }
+
+  // Case-insensitive, because `WARN` is what someone types at 6pm. An
+  // unrecognised level must not fall through to "nothing matches", which is what
+  // comparing against an unknown rank used to do: exit 0, "no findings".
+  const rawSeverity = opts["minSeverity"] as string | undefined;
+  const minSeverity = rawSeverity?.trim().toLowerCase() as Severity | undefined;
+  if (rawSeverity !== undefined && !SEVERITIES.has(minSeverity as Severity)) {
+    fail(
+      `spring-review: unknown --min-severity "${rawSeverity}" (expected error | warn | info)\n`,
+    );
+    return 2;
+  }
 
   const options = mergeOptions(config, {
-    minSeverity: opts["minSeverity"] as Severity | undefined,
+    minSeverity,
     exclude: (opts["exclude"] as string[] | undefined) ?? [],
     disabledRules: (opts["disable"] as string[] | undefined) ?? [],
     experimental: Boolean(opts["experimental"]),
   });
+
+  // A rule id that matches nothing is not a no-op, it is a wrong expectation:
+  // `--disable SPR5` reads as "this repo turned that rule off" while the rule
+  // keeps firing. Both the config file and the flags go through here.
+  const known = new Set(allRules.map((r) => r.id.toUpperCase()));
+  const unknownRules = [...(options.disabledRules ?? []), ...(options.onlyRules ?? [])].filter(
+    (id) => !known.has(id.toUpperCase()),
+  );
+  if (unknownRules.length > 0) {
+    fail(
+      `spring-review: no such rule: ${unknownRules.join(", ")} (see --list-rules)\n` +
+        `spring-review: rules are ${[...known].join(", ")}\n`,
+    );
+    return 2;
+  }
 
   const wholeFiles = [
     ...program.args,

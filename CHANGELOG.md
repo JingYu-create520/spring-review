@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.8 — 2026-09-22
+
+### Fixed
+
+- **Three ways to turn the gate off by accident, now exit 2 instead.** Found by
+  feeding the CLI input it should not have accepted:
+  - `--min-severity high` (also `WARN`) matched no level, filtered out every
+    finding, and reported `no findings` with exit 0. Unknown levels are a usage
+    error now; case is not — `WARN` means `warn`.
+  - A `.spring-review.json` that failed validation was *printed to stderr and
+    ignored*, so `disable` and `exclude` silently stopped applying. The run stops.
+  - `--disable SPR5` disabled nothing at all, while reading as "this repo turned
+    that rule off". Rule ids are checked against the catalogue, in the config as
+    well as the flags.
+- **SPR002 named the exception wrong.** `throws java.io.IOException` was reported
+  as `java, io, IOException` — the clause was split on its dots. Qualified names
+  are kept as written now; the check already matched the simple name at the end.
+
 ## 0.1.7 — 2026-09-22
 
 The first corpus with real MyBatis XML: `mybatis/mybatis-3`, 1837 files. It also

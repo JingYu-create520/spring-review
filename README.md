@@ -22,7 +22,8 @@ same output. `--llm` rewrites the summary paragraph and nothing else.
 > [中文 README](./README.zh-CN.md) · [Rules](#rules) · [Why not just ask the model](#why-not-just-ask-the-model) · [What it does not do](#what-it-does-not-do)
 
 Exit codes: `0` nothing blocking, `1` at least one error-severity finding, `2` the
-tool could not run.
+tool could not run — which includes an argument or a config file it cannot honour, so
+a mistyped severity is a red build rather than a clean pass.
 
 ## Install
 
@@ -265,7 +266,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 125 tests
+npm run typecheck && npm test    # 129 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

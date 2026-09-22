@@ -139,6 +139,7 @@ export interface JavaMember {
   modifiers: string[];
   returnType?: string;
   params: string[];
+  /** Types named in the `throws` clause, as written (qualified if the author qualified them). */
   throwsTypes: string[];
   abstract: boolean;
   /** Offset of the signature start. */
