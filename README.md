@@ -89,8 +89,10 @@ over and no comment thread to de-duplicate. `fail-on-error: false` keeps the job
 green and still marks the lines; it does that by re-emitting at `notice` level,
 because a `::error` workflow command fails the run whatever the exit code says.
 
-The Action pulls the CLI from npm, so it needs the package published. Until then, a
-`script:` step over a clone does the same job.
+The Action installs the CLI from this repository (`npx github:…#v0`, built by the
+package's `prepare` script), so there is no npm dependency to wait on.
+`install-from: npm` switches over once the package exists; `install-from: local`
+runs a build already present in the job. CI exercises all three paths.
 
 ### Code scanning
 

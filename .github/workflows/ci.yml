@@ -116,10 +116,19 @@ jobs:
 
       - run: npm ci && npm run build
 
-      - name: Review the demo commit through action.yml (must not block)
+      - name: Review the demo commit the way an outsider would (npx from GitHub)
         uses: ./
         with:
           base: ${{ env.SR_DEMO_BASE }}
           head: ${{ env.SR_DEMO_HEAD }}
-          version: local
+          install-from: github
+          ref: v0
+          fail-on-error: "false"
+
+      - name: Same range through the in-repo build (no network install)
+        uses: ./
+        with:
+          base: ${{ env.SR_DEMO_BASE }}
+          head: ${{ env.SR_DEMO_HEAD }}
+          install-from: local
           fail-on-error: "false"

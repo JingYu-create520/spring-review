@@ -82,8 +82,9 @@ jobs:
 `fail-on-error: false` 会让 job 保持绿色但照样标出问题——做法是把注解降级成
 `notice`，因为 `::error` 是 workflow 命令，本身就会让这次运行失败，跟退出码无关。
 
-Action 内部从 npm 取 CLI，所以要等包发布才能用；在那之前，用 `script:` 步骤调 clone
-出来的那份是同样的效果。
+Action 默认从这个仓库装 CLI（`npx github:…#v0`，由包的 `prepare` 脚本构建），不需要等 npm。
+`install-from: npm` 在包发布后切过去，`install-from: local` 用 job 里已经构建好的那份。
+CI 三条路径都会跑一遍。
 
 ### Code Scanning
 

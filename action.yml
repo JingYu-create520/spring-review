@@ -30,12 +30,19 @@ inputs:
     description: Fail the job when an error-severity finding is reported. true|false
     required: false
     default: "true"
-  version:
-    description: spring-review version to run from npm.
+  install-from:
+    description: >-
+      github — install this repository with npx (works today, no npm package
+      needed); npm — install the published spring-review package;
+      local — run the dist/ of this checkout, used by the repo's own CI.
     required: false
-    default: latest
+    default: github
+  ref:
+    description: Tag or commit to install in github mode, or package version in npm mode.
+    required: false
+    default: v0
   token:
-    description: Optional GITHUB_TOKEN; only needed if the npm package is private.
+    description: Optional GITHUB_TOKEN; only needed for a private package in npm mode.
     required: false
     default: ""
 
@@ -63,7 +70,8 @@ runs:
     - name: Run spring-review
       shell: bash
       env:
-        SR_VERSION: ${{ inputs.version }}
+        SR_INSTALL_FROM: ${{ inputs.install-from }}
+        SR_REF: ${{ inputs.ref }}
         SR_MIN_SEVERITY: ${{ inputs.min-severity }}
         SR_EXCLUDE: ${{ inputs.exclude }}
         SR_EXPERIMENTAL: ${{ inputs.experimental }}
@@ -82,11 +90,23 @@ runs:
         fi
         if [ "$SR_EXPERIMENTAL" = "true" ]; then ARGS+=(--experimental); fi
 
-        if [ "$SR_VERSION" = "local" ]; then
-          OUT=$(node "${GITHUB_ACTION_PATH}/dist/cli.js" "${ARGS[@]}")
-        else
-          OUT=$(npx --yes "spring-review@${SR_VERSION}" "${ARGS[@]}")
-        fi
+        # `github` is the default because the npm package is not published: npx can
+        # install straight from this repository, and the `prepare` script builds dist/.
+        case "$SR_INSTALL_FROM" in
+          local)
+            OUT=$(node "${GITHUB_ACTION_PATH}/dist/cli.js" "${ARGS[@]}")
+            ;;
+          npm)
+            OUT=$(npx --yes "spring-review@${SR_REF}" "${ARGS[@]}")
+            ;;
+          github)
+            OUT=$(npx --yes "github:JingYu-create520/spring-review#${SR_REF}" "${ARGS[@]}")
+            ;;
+          *)
+            echo "::error::install-from must be github, npm or local (got '$SR_INSTALL_FROM')"
+            exit 2
+            ;;
+        esac
         CODE=$?
 
         # `::error file=…,line=…::` is a workflow command, not just text: the runner
