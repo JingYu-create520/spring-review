@@ -61,7 +61,10 @@ spring-review --patch pr.patch --format github
 A path may be a file, a directory or a glob; `target/`, `build/`, `node_modules/`
 and `generated/` are never walked. An input that yields nothing reviewable is
 named in the output rather than passing quietly — a linter that reports "clean"
-over zero files is worse than one that fails.
+over zero files is worse than one that fails. A patch whose context lines do not
+match the file it claims to change is named the same way: the review falls back to
+the patch's own lines, because scoring added numbers against unrelated code
+produces the one result nobody should trust.
 
 Only added lines are reported, so existing code does not come back to haunt you.
 Other flags: `--min-severity error|warn|info`, `--exclude '**/generated/**'`,
@@ -243,7 +246,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 119 tests
+npm run typecheck && npm test    # 120 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

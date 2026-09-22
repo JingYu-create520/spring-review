@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.5 — 2026-09-22
+
+### Fixed
+
+- **A patch that does not describe the file on disk used to pass quietly.** Line
+  numbers were trusted once the real file had been found, so `--patch` run in the
+  wrong directory — or an agent retrying `review_diff` against a tree that had
+  moved — scored the added lines against unrelated code and reported a clean
+  review. Context lines are now checked against the file (whitespace-insensitive,
+  majority vote); on disagreement the run falls back to the patch's own text,
+  marks the unit incomplete, and says which happened:
+
+  ```
+  src/UserMapper.xml — patch context does not match the file on disk,
+                       so the patch's own lines were reviewed
+  ```
+
+  This is the failure mode a reviewer can't see: a clean result over code that
+  was never looked at.
+
 ## 0.1.4 — 2026-09-22
 
 ### Fixed

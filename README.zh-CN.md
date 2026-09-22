@@ -56,6 +56,8 @@ spring-review --patch pr.patch --format github
 路径可以是文件、目录或 glob；`target/`、`build/`、`node_modules/`、`generated/` 不会被遍历。
 一个输入如果没匹配到任何可审查文件，会在输出里点名说明，而不是安静地通过——
 "扫了 0 个文件然后报告一切正常"的静态检查，比直接报错更糟。
+patch 的上下文和它声称修改的文件对不上时，同样会点名：审查退回到 patch 自己的文本，
+因为拿新增行的行号去评一段无关代码，产出的正是那种没人该信的结果。
 
 只报新增行上的问题，存量代码不会翻出来骚扰你。
 其他参数：`--min-severity error|warn|info`、`--exclude '**/generated/**'`、
@@ -215,7 +217,7 @@ MyBatis Generator 自己生成的 `order by ${orderByClause}`，现在框架占�
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 119 个测试
+npm run typecheck && npm test    # 120 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

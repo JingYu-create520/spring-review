@@ -137,6 +137,51 @@ describe("reviewDiff against a real repository", () => {
     expect(result.findings.some((f) => f.file.endsWith("UserMapper.java"))).toBe(false);
   });
 
+  it("does not score a patch against a file it does not describe", async () => {
+    // `--patch` run from the wrong directory, or an agent retrying review_diff
+    // after the tree moved on. The line numbers are then points into unrelated
+    // code, and the honest answer is "this patch is not about this file" — not
+    // the clean run that trusting the numbers produced.
+    const stale = await mkdtemp(join(tmpdir(), "sr-stale-"));
+    await mkdir(join(stale, XML_BAD.slice(0, XML_BAD.lastIndexOf("/"))), { recursive: true });
+    await writeFile(
+      join(stale, XML_BAD),
+      [
+        '<?xml version="1.0"?>',
+        '<mapper namespace="demo.A">',
+        '  <select id="one" resultType="map">select id from a where x = 1 limit 20</select>',
+        '  <select id="two" resultType="map">select id from a where y = 2 limit 20</select>',
+        '  <select id="three" resultType="map">select id from a where z = 3 limit 20</select>',
+        "</mapper>",
+        "",
+      ].join("\n"),
+    );
+    const patch = [
+      `--- a/${XML_BAD}`,
+      `+++ b/${XML_BAD}`,
+      "@@ -1,6 +1,7 @@",
+      ' <?xml version="1.0"?>',
+      ' <mapper namespace="demo.B">',
+      '   <select id="alpha" resultType="map">select id from b where q = 1</select>',
+      '   <select id="beta" resultType="map">select id from b where q = 2</select>',
+      '   <insert id="gamma">insert into b (x) values (1)</insert>',
+      '   <delete id="delta">delete from b</delete>',
+      "+  <select id=\"bad\" resultType=\"map\">select id from b where name = '${kw}' limit 20</select>",
+      "",
+    ].join("\n");
+
+    const result = await reviewDiff({ kind: "patch", text: patch }, stale, OPTS);
+    expect(result.skipped.some((s) => s.reason.includes("does not match the file on disk"))).toBe(
+      true,
+    );
+    // Judgement that needs only the added line still happens, on the patch's own
+    // text, at the number the patch gave it.
+    const injection = result.findings.filter((f) => f.rule === "MYB001");
+    expect(injection).toHaveLength(1);
+    expect(injection[0]?.line).toBe(7);
+    await rm(stale, { recursive: true, force: true });
+  });
+
   it("degrades honestly when only the patch is available", async () => {
     const patch = await readFile(join(patchOnlyDir, "pr.patch"), "utf8");
     const result = await reviewDiff({ kind: "patch", text: patch }, patchOnlyDir, OPTS);

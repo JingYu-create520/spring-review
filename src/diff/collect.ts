@@ -119,6 +119,31 @@ export async function expandReviewInputs(
 }
 
 /**
+ * Does this patch actually describe the file we have?
+ *
+ * Context lines are the one part of a diff that is *required* to be identical
+ * text on both sides, which makes them a direct check of a question nothing else
+ * in the pipeline can ask once line numbers have been trusted: `--patch` run in
+ * the wrong directory, or an agent retrying `review_diff` after the tree moved,
+ * otherwise report added code as clean because the numbers land somewhere else.
+ *
+ * Comparison ignores leading/trailing whitespace, so a reformat or a
+ * tab-vs-space editor setting does not throw away a good patch.
+ */
+export function patchMatchesFile(file: DiffFile, content: string): boolean {
+  const lines = normalizeNewlines(content).split("\n");
+  const checks = [...file.contextLines.entries()];
+  // Nothing to verify against: a pure addition (new file) has no context.
+  if (checks.length === 0) return true;
+  let matched = 0;
+  for (const [line, text] of checks) {
+    const actual = lines[line - 1];
+    if (actual !== undefined && actual.trim() === text.trim()) matched++;
+  }
+  return matched / checks.length >= 0.5;
+}
+
+/**
  * Turn diff files into review units. The content always comes from the real
  * file (working tree or the diff's `+` ref) — patch text is only a last resort,
  * and units built that way are flagged `complete: false`.
@@ -169,6 +194,18 @@ export async function unitsFromDiff(files: DiffFile[], opts: CollectOptions): Pr
       content = rebuilt.content;
       contentSource = "patch";
       complete = rebuilt.complete;
+    } else if (!patchMatchesFile(file, content)) {
+      // The numbers in this patch belong to a different revision of the file.
+      // Review the patch's own text and say so, rather than scoring the added
+      // lines against code the patch never touched.
+      const rebuilt = reconstructFile(file);
+      content = rebuilt.content;
+      contentSource = "patch";
+      complete = false;
+      skipped.push({
+        path,
+        reason: "patch context does not match the file on disk, so the patch's own lines were reviewed",
+      });
     }
 
     units.push({
