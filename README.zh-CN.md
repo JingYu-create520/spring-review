@@ -145,7 +145,7 @@ CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install
 | SPR004 | 单例 Bean 里 `new Thread` / `Executors.newXxx` | error |
 | SPR005 | 实例字段被非同步方法写（`--experimental`） | warn |
 | SPR006 | `@Cacheable` 被自调用绕过，或者所有参数都进 key | warn |
-| MYB001 | `${}` 拼接：语句、`<sql>` 片段、`@Select` 都扫 | error |
+| MYB001 | `${}` 拼接：语句、`<sql>` 片段、`@Select` 都扫；改法看位置 —— 值用 `#{}`，标识符用白名单，整段片段只能管服务端来源 | error |
 | MYB002 | N+1：循环或 stream 里调 mapper，`resultMap` 嵌套 select | error |
 | MYB003 | 左通配 `LIKE`，字面量 / `concat` / `<bind>` 三种形态 | warn |
 | MYB004 | `SELECT *` | warn |
@@ -176,7 +176,9 @@ CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install
 ## 为什么不直接问大模型
 
 模型看 diff 有三件事做不到。给不出能点开的行号。保证不了两次答案一样，所以不能拿来
-卡合并。也不知道 `ORDER BY ${sortField}` 是白名单问题，不是"改成 `#{}`"能解决的。
+卡合并。也不知道 `ORDER BY ${sortField}` 是白名单问题，不是"改成 `#{}`"能解决的——
+这一点 v0.1.12 之前的这个工具也不知道，它对一个真实框架里的 6 处 `${}` 全部建议
+"改成预编译参数"。规则至少能在一个提交里把自己的错改掉，并且钉在测试上。
 
 所以结论由规则给出：每条带规则号、证据、HEAD 里的行号、改法，以及一个单元测试。
 `--llm` 接任意 OpenAI 兼容端点（`SR_LLM_BASE_URL`、`SR_LLM_API_KEY`、`SR_LLM_MODEL`），
@@ -193,8 +195,14 @@ demo-project 是自带样本的夹具，它只能证明"规则该触发的时候
 | 两个 Spring 网关模块（不含 MyBatis） | 195 | 3 | 都在 `*IT.java` 的轮询循环里查库 —— 确实是逐次往返，但在测试里是有意的 |
 | [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | 一个 `SELECT *`，一个无界查询 |
 | [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 个 `SELECT *`、12 个循环里逐条调 mapper、1 个无界查询、1 个失效的 `@Scheduled` |
-| [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 581 | 全在框架自己的测试 mapper 里：`SELECT *`、无界查询、`${}` 特性测试 |
+| [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 590 | 全在框架自己的测试 mapper 里：`SELECT *`、无界查询、`${}` 特性测试 |
 | [newbee-ltd/newbee-mall](https://github.com/newbee-ltd/newbee-mall) | 98 | 4 | 两处左通配搜索，外加两处商品搜索的 `#{}` 被写在引号里、根本绑定不上 |
+| [yangzongzhuan/RuoYi-Vue](https://github.com/yangzongzhuan/RuoYi-Vue) | 295 | 50 | 6 处 `${}` 原样拼接、7 个无界的 `selectXxxAll`、17 个 service 循环里逐条调 mapper、19 处左通配搜索、1 个 `SELECT *` |
+
+"文件数"是这次运行打开的全部 `.java` 与 `.xml`。分析不了的文件不会静默过去，而是在同一
+份输出的 `skipped:` 里逐个点名 —— mybatis-3 的 1837 个里有 226 个（站点文档的
+`<document>` XML、`pom.xml`、`<configuration>` 文件），RuoYi 的 295 个里有 9 个，所以
+`--format json` 报的实际分析数是 1611 和 286。
 
 mall 这一轮扫出了一个真实 bug：`OrderTimeOutCancelTask` 里 `@Scheduled(cron = …)` 标在
 **private** 方法上，Spring 不会调用它 —— 那个超时订单取消任务根本没在跑。
@@ -213,8 +221,28 @@ mybatis-3 是第一个带真实 MyBatis XML 的代码库，它又带来了四个
 产出了一条 `SELECT *`。没有 SQL 的文件又变成每条规则记一次跳过。只用来选 include 目标
 的 `${}` 现在是 warn，不再是注入 error。
 
-还没被验证到的：`${}` 里真的带着用户输入的代码库。最接近的是 mybatis-3 的特性测试，
-`${column}`、`${table}` 由测试属性填 —— 确实是原样拼接，报得没错，但不是谁的请求。
+RuoYi 又带来两个修复，两个都不是"报没报"的问题，而是"说的是什么"。它的 6 处 `${}`
+有 5 处是数据权限切面拼进来的 WHERE 片段（`${params.dataScope}`，分布在 user/role/dept
+三个 mapper），另外 1 处是代码生成器的 DDL（`<update id="createTable">${sql}</update>`）
+—— 这些位置在结构上不可能用
+`#{}`：预编译参数只能替代表达式里的一个值，替代不了一段 SQL。而旧版本给的建议是
+"改为预编译参数 `#{params}`"，也就是把一个 Map 交给驱动。MYB001 现在会看占位符所在的
+位置：`= ${kw}` 才建议 `#{}`；`from ${table}`、`select ${id}`、`col_${suffix}`、
+`order by ${sort}` 给标识符白名单；`<if test="'${value}' == 'x'">` 说明那拼进的是 OGNL
+表达式；整段片段则直说 —— 控制点在服务端来源，不在占位符。同理 `#{ids[${index}]}`，它
+选的是"绑哪个参数"，之前被当成注入；这是两个语料合起来去掉的唯一一条发现。
+
+第二个：`SysConfigMapper.selectConfig` 是 `<include refid="selectConfigVo"/>` 加
+`<include refid="sqlwhereSearch"/>`，而 WHERE 就在第二个片段里。为了拼出 SQL 文本要把
+标签去掉，这一去把"它有边界"的唯一证据删掉了，于是 MYB005 把一个有过滤的查询报成全表
+读。现在 `<where>`、`<set>`、`<trim prefix="WHERE">` 会变成 MyBatis 真正生成的关键字，
+顺带修好了所有条件写成 `<include refid="Example_Where_Clause"/>` 的 MyBatis Generator
+mapper。
+
+仍然没被验证到的是：请求参数直接流进 `${}` 的那种代码。RuoYi 的值来自切面和生成器，
+而要把它们和调用方可控的字符串区分开，需要跨文件追一个值的来源 —— 那是
+[#2](https://github.com/JingYu-create520/spring-review/issues/2)，不是这条规则。
+五个语料里的每一处 `${}` 都被报了出来，但没有一处已知真的带着请求参数。
 
 ## 它做不到什么
 
@@ -234,7 +262,7 @@ mybatis-3 是第一个带真实 MyBatis XML 的代码库，它又带来了四个
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 136 个测试
+npm run typecheck && npm test    # 153 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

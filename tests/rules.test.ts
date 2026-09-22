@@ -524,3 +524,242 @@ describe("engine behaviour", () => {
     expect(result.skipped.some((s) => s.reason.includes("patch fragment"))).toBe(true);
   });
 });
+
+describe("MYB001 advice follows the position the placeholder occupies", () => {
+  // Evidence: a widely deployed admin framework (RuoYi-Vue) has six `${}` in its
+  // mappers, and every one of them is either a whole injected WHERE clause
+  // (`${params.dataScope}`, written by a data-scope aspect) or the entire body of
+  // a statement (`${sql}` in the generator's createTable). "改为预编译参数" is not
+  // a fix in those positions — it turns the SQL into a string literal — so the
+  // suggestion has to say what the position can actually be given.
+  const mapper = (body: string) =>
+    [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="Pos">',
+      body,
+      "</mapper>",
+    ].join("\n");
+
+  function only(body: string, needle: string): Finding {
+    const src = mapper(body);
+    const hits = analyze(src).filter(
+      (f) => f.rule === "MYB001" && f.line === lineOf(src, needle),
+    );
+    expect(hits.length).toBe(1);
+    return hits[0]!;
+  }
+
+  it("binds a dotted path whole, not its first segment", () => {
+    const hit = only(
+      '  <select id="a" resultType="map">select id from t where del_flag = 0 and page_size = ${params.pageSize} limit 20</select>',
+      "${params.pageSize}",
+    );
+    expect(hit.severity).toBe("error");
+    expect(hit.suggestion).toBe("改为预编译参数 #{params.pageSize}。");
+  });
+
+  it("never proposes a bound parameter for a placeholder that is the whole condition", () => {
+    const hit = only(
+      [
+        '  <select id="b" resultType="map">',
+        "    select id from t",
+        "    where u.del_flag = '0'",
+        "    ${params.dataScope}",
+        "  </select>",
+      ].join("\n"),
+      "${params.dataScope}",
+    );
+    expect(hit.severity).toBe("error");
+    expect(hit.message).toContain("一整段 SQL 片段");
+    // It may mention `#{}` to explain why that is not an option; it must not
+    // recommend it, which is the advice that produced broken SQL.
+    expect(hit.suggestion).toContain("换不成");
+    expect(hit.suggestion).not.toContain("改为预编译参数");
+    expect(hit.suggestion).toContain("替代不了一段 SQL");
+    // The only real control point is where the text comes from.
+    expect(hit.suggestion).toContain("来源");
+  });
+
+  it("does not call a statement that is nothing but ${} a bindable value", () => {
+    const hit = only('  <update id="createTable">\n        ${sql}\n    </update>', "${sql}");
+    expect(hit.suggestion).toContain("白名单");
+    expect(hit.suggestion).not.toContain("改为预编译参数");
+  });
+
+  it("gives the whitelist advice for ORDER BY even when the name is not orderish", () => {
+    const hit = only(
+      '  <select id="c" resultType="map">select id from t where a = 1 order by ${params.sort} limit 20</select>',
+      "${params.sort}",
+    );
+    expect(hit.suggestion).toContain("白名单");
+    expect(hit.suggestion).not.toContain("改为预编译参数");
+  });
+
+  it("treats a table name as an identifier position, not a value", () => {
+    const hit = only(
+      '  <select id="e" resultType="map">select id from ${tableName} limit 20</select>',
+      "${tableName}",
+    );
+    expect(hit.suggestion).toContain("白名单");
+    expect(hit.message).toContain("标识符");
+  });
+
+  it("reads a column name out of `<foreach>${key} = #{item}`", () => {
+    // Taken from MyBatis' own test corpus. The tag before the placeholder ends in
+    // `>`, which a comparison operator also ends in — and `#{key}` there does not
+    // bind a column, it compares a string literal to it.
+    const hit = only(
+      '  <update id="m">update t <foreach collection="m" item="v" index="key" separator=",">${key} = #{v}</foreach> where id = #{id}</update>',
+      "${key}",
+    );
+    expect(hit.suggestion).toContain("白名单");
+    expect(hit.suggestion).not.toContain("改为预编译参数");
+  });
+
+  it("does not bind a placeholder glued into an identifier", () => {
+    const hit = only(
+      '  <select id="h" resultType="map">select id from t where col_${suffix} = #{v} limit 20</select>',
+      "${suffix}",
+    );
+    expect(hit.suggestion).toContain("白名单");
+  });
+
+  it("says OGNL, not prepared statement, for a placeholder in a tag attribute", () => {
+    const hit = only(
+      '  <select id="i" resultType="map">select id from t where a = 1<if test="\'${value}\' == \'x\'">and b = 2</if></select>',
+      "${value}",
+    );
+    expect(hit.message).toContain("OGNL");
+    expect(hit.suggestion).not.toContain("改为预编译参数");
+  });
+
+  it("says to compute an expression in Java instead of binding it", () => {
+    const hit = only(
+      '  <select id="f" resultType="map">select id from t where a = ${list.size()} limit 20</select>',
+      "${list.size()}",
+    );
+    expect(hit.severity).toBe("error");
+    expect(hit.suggestion).toContain("先在 Java 侧算出值");
+  });
+
+  it("keeps a quoted comparison value on the bound-parameter advice", () => {
+    const hit = only(
+      '  <select id="g" resultType="map">select id from t where name like \'%${keyword}%\'</select>',
+      "${keyword}",
+    );
+    expect(hit.suggestion).toBe("改为预编译参数 #{keyword}。");
+  });
+});
+
+describe("units reports what was actually looked at", () => {
+  it("excludes files skipped before any rule ran", () => {
+    // The same run prints `skipped: pom.xml — not a MyBatis mapper XML`, so a
+    // count that also includes those files contradicts its own output: "267
+    // file(s) reviewed" on a repository where five were never parsed as SQL.
+    const mapper =
+      '<?xml version="1.0"?><mapper namespace="U"><select id="s" resultType="map">select id from t where a = ${a}</select></mapper>';
+    const result = reviewUnits(
+      [
+        unit("User.xml", mapper),
+        unit("pom.xml", '<?xml version="1.0"?><project><name>x</name></project>'),
+        unit("logback.xml", '<?xml version="1.0"?><configuration><appender name="a"/></configuration>'),
+      ],
+      rules,
+      { ...DEFAULTS },
+    );
+    expect(result.units).toBe(1);
+    expect(result.skipped.filter((s) => s.reason.includes("not a MyBatis mapper XML"))).toHaveLength(2);
+  });
+});
+
+
+describe("MYB001 reads the context a placeholder shares with its neighbours", () => {
+  const onlyHere = (body: string, needle: string): Finding => {
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="Ctx">',
+      body,
+      "</mapper>",
+    ].join("\n");
+    const hits = analyze(src).filter(
+      (f) => f.rule === "MYB001" && f.line === lineOf(src, needle),
+    );
+    expect(hits.length).toBe(1);
+    return hits[0]!;
+  };
+
+  it("reads a values-list placeholder that starts its own line as a value", () => {
+    // Straight out of MyBatis' own corpus: `values(` then a newline, then the
+    // placeholder. Line-local context alone sees nothing before it and used to
+    // call the first item of a VALUES list "an entire SQL fragment".
+    const hit = onlyHere(
+      [
+        '  <insert id="j" parameterType="map">',
+        "    insert into t (id, name)",
+        "    values(",
+        "    ${id}, #{name}",
+        "    )",
+        "  </insert>",
+      ].join("\n"),
+      "${id},",
+    );
+    expect(hit.suggestion).toBe("改为预编译参数 #{id}。");
+  });
+
+  it("stays silent on an index inside a bound parameter", () => {
+    // `#{ids[${index}]}` chooses which element to bind; the substituted text never
+    // reaches the SQL string, so calling it injection would be calling a prepared
+    // statement a vulnerability.
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="Ix">',
+      '  <select id="s" resultType="map">select id from t where id in <foreach item="item_id" index="index" open="(" close=")" separator="," collection="ids">#{ids[${index}]}</foreach></select>',
+      "</mapper>",
+    ].join("\n");
+    expect(analyze(src).filter((f) => f.rule === "MYB001")).toEqual([]);
+  });
+});
+
+describe("MYB005 reads a WHERE that arrives through <include>", () => {
+  // RuoYi's SysConfigMapper.selectConfig is `<include refid="selectConfigVo"/>`
+  // plus `<include refid="sqlwhereSearch"/>`, where the second fragment holds the
+  // `<where>` block. Stripping `<where>` to a space deleted the only evidence that
+  // the statement is bounded, and the tool called a filtered query a full-table
+  // read. The tag now becomes the keyword MyBatis actually emits.
+  const src = [
+    '<?xml version="1.0"?>',
+    '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+    '<mapper namespace="W">',
+    '  <sql id="cols">select id, name from t</sql>',
+    '  <sql id="whereId"><where><if test="id != null">and id = #{id}</if></where></sql>',
+    '  <select id="find" resultType="map"><include refid="cols"/><include refid="W.whereId"/></select>',
+    '  <select id="all" resultType="map"><include refid="cols"/></select>',
+    '  <select id="trimmed" resultType="map">select id from t <trim prefix="WHERE" prefixOverrides="AND">and a = #{a}</trim></select>',
+    '  <select id="noPrefix" resultType="map">select id from t <trim prefixOverrides="AND">and a = #{a}</trim></select>',
+    "</mapper>",
+  ].join("\n");
+  const hits = analyze(src).filter((f) => f.rule === "MYB005").map((f) => f.line);
+
+  it("stays silent when the condition comes from an included fragment", () => {
+    expect(hits).not.toContain(lineOf(src, '<select id="find"'));
+  });
+
+  it("still fires when nothing bounds the read", () => {
+    expect(hits).toContain(lineOf(src, '<select id="all"'));
+  });
+
+  it("keeps a tag it cannot read as 'unknown', not as 'absent'", () => {
+    // `<trim prefixOverrides="AND">` without a prefix might still be a WHERE
+    // clause: the prefix can come from a nested `<where>`, which this file may
+    // not contain at all. Concluding "no WHERE" from that is how the rule gets
+    // switched off, so an unreadable `<trim>` bounds the statement.
+    expect(hits).not.toContain(lineOf(src, '<select id="noPrefix"'));
+  });
+
+  it("counts a `<trim prefix=\"WHERE\">` as the keyword it emits", () => {
+    expect(hits).not.toContain(lineOf(src, '<select id="trimmed"'));
+  });
+});

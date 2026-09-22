@@ -20,6 +20,11 @@ export function reviewUnits(units: ReviewUnit[], rules: Rule[], options: ReviewO
   const only = options.onlyRules?.length
     ? new Set(options.onlyRules.map((r) => r.toUpperCase()))
     : undefined;
+  // `units` is the number of files something was actually checked in. Counting
+  // every input made the summary say "267 file(s) reviewed" on a repository where
+  // five of them were `pom.xml` skipped as unanalyzable — the skipped list names
+  // those files precisely so the count can disagree with the input.
+  let reviewed = 0;
 
   for (const unit of units) {
     let java: JavaFile | undefined;
@@ -57,6 +62,7 @@ export function reviewUnits(units: ReviewUnit[], rules: Rule[], options: ReviewO
       if (unit.companion) companion = analyzeJava(unit.companion.path, unit.companion.content);
     }
 
+    reviewed++;
     for (const rule of rules) {
       const id = rule.id.toUpperCase();
       if (disabled.has(id)) continue;
@@ -107,7 +113,7 @@ export function reviewUnits(units: ReviewUnit[], rules: Rule[], options: ReviewO
 
   return {
     findings: kept,
-    units: units.length,
+    units: reviewed,
     skipped,
     hitRules: [...new Set(kept.map((f) => f.rule))].sort(),
   };

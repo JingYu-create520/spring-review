@@ -160,7 +160,7 @@ that read skills instead of speaking MCP.
 | SPR004 | `new Thread` / `Executors.newXxx` inside a singleton bean | error |
 | SPR005 | mutable instance state written from unguarded methods (`--experimental`) | warn |
 | SPR006 | `@Cacheable` bypassed by a self-call, or keyed by every argument | warn |
-| MYB001 | `${}` interpolation: statements, `<sql>` fragments, `@Select` SQL | error |
+| MYB001 | `${}` interpolation in statements, `<sql>` fragments and `@Select` SQL; the fix follows the position — `#{}` for a value, an identifier whitelist for a name, the server-side source for a whole fragment | error |
 | MYB002 | N+1: mapper call in a loop or stream, or a `resultMap` nested select | error |
 | MYB003 | leading-wildcard `LIKE`, as a literal, via `concat`, or via `<bind>` | warn |
 | MYB004 | `SELECT *` | warn |
@@ -202,7 +202,9 @@ an error and says to drop the quotes.
 Three things a model does not do with a diff. It cannot give you a line number you
 can click. It cannot promise the same answer twice, so it cannot gate a merge. And it
 does not know that `ORDER BY ${sortField}` is a whitelist problem rather than a "use
-`#{}`" one.
+`#{}`" one — every release of this tool up to v0.1.12 recommended `#{}` for all six
+of a real framework's `${}` placeholders, which is a mistake a model would have
+argued about. Rules at least fix theirs in one commit and pin it with a test.
 
 So rules produce the findings: each has an id, the evidence, a line in HEAD, a
 suggestion, a unit test. `--llm` talks to any OpenAI-compatible endpoint
@@ -221,8 +223,15 @@ nothing planted for them.
 | two Spring gateway modules (no MyBatis) | 195 | 3 | queries inside polling loops in `*IT.java` — real per-iteration round trips, intentional in a test |
 | [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | one `SELECT *`, one unbounded select |
 | [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 `SELECT *`, 12 mapper calls inside batch loops, 1 unbounded select, 1 dead `@Scheduled` |
-| [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 581 | every one of them inside the framework's own test mappers: `SELECT *`, unbounded selects, `${}` feature tests |
+| [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 590 | every one of them inside the framework's own test mappers: `SELECT *`, unbounded selects, `${}` feature tests |
 | [newbee-ltd/newbee-mall](https://github.com/newbee-ltd/newbee-mall) | 98 | 4 | two leading-wildcard searches, and two goods-search conditions whose `#{}` sits inside quotes so it never binds |
+| [yangzongzhuan/RuoYi-Vue](https://github.com/yangzongzhuan/RuoYi-Vue) | 295 | 50 | six `${}` injections of raw text, 7 unbounded `selectXxxAll`, 17 mapper calls inside service loops, 19 leading-wildcard searches, one `SELECT *` |
+
+`Files` counts every `.java` and `.xml` the run opened. The files it refused to
+analyze are named by path in that same run's `skipped:` block instead of being
+quietly passed over — 226 of mybatis-3's 1837 (site-documentation `<document>` XML,
+`pom.xml`, `<configuration>` files) and 9 of RuoYi's 295, which is why the reviewed
+count in `--format json` is 1611 and 286.
 
 The mall run found a real bug: `@Scheduled(cron = …)` on a **private** method in
 `OrderTimeOutCancelTask`, which Spring will not invoke. That task does not run.
@@ -245,10 +254,34 @@ fragment. Annotation SQL was scanned from the raw file, so the Javadoc of
 one skip per rule again. And a `${}` that only picks an include target is a `warn`
 now, not an injection `error`.
 
-What this still does not prove: a codebase where a `${}` placeholder carries user
-input. The nearest approach is mybatis-3's feature tests, where `${column}` and
-`${table}` are filled from test properties — interpolated raw, correctly reported,
-but nobody's request.
+RuoYi cost two more, and both were about *what the tool says* rather than what it
+counts. Its six `${}` are a data-scope aspect's WHERE fragment
+(`${params.dataScope}`, five times across the user, role and dept mappers) and a
+code generator's DDL (`<update id="createTable">${sql}</update>`) — positions
+where `#{}` is structurally impossible, because a bound parameter can replace a
+value but never a clause. The advice given there had been "改为预编译参数 `#{params}`": a Map handed to
+the driver. MYB001 now reads where the placeholder sits and says the true thing —
+`#{}` for `= ${kw}`, an identifier whitelist for `from ${table}`, `select ${id}`,
+`col_${suffix}` and `order by ${sort}`, an OGNL warning for
+`<if test="'${value}' == 'x'">`, and for a whole injected clause: the control
+point is the server-side source, not the placeholder. Same for
+`#{ids[${index}]}`, which picks *which parameter* to bind and was being reported as
+injection; that is the one finding RuoYi and mybatis-3 combined removed.
+
+The second: `SysConfigMapper.selectConfig` is `<include refid="selectConfigVo"/>`
+plus `<include refid="sqlwhereSearch"/>`, and the second fragment is the `<where>`
+block. Stripping tags to spaces to build the SQL text deleted the only evidence
+that the statement was bounded, so MYB005 called a filtered query a full-table
+read. `<where>`, `<set>` and `<trim prefix="WHERE">` now become the keyword
+MyBatis actually emits, which also fixes every MyBatis Generator mapper whose
+conditions arrive as `<include refid="Example_Where_Clause"/>`.
+
+What is still not proven: a request parameter flowing straight into a `${}`.
+RuoYi's values come from an aspect and a generator, and telling those apart from a
+caller-controlled string needs the source of a value across files — which is
+[#2](https://github.com/JingYu-create520/spring-review/issues/2), not this rule.
+Every `${}` in all five corpora was reported; none of them is known to have
+carried a request parameter.
 
 ## What it does not do
 
@@ -273,7 +306,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 136 tests
+npm run typecheck && npm test    # 153 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

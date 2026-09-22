@@ -4,6 +4,49 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.13 — 2026-09-22
+
+### Fixed
+
+- **MYB001 recommended `#{}` where `#{}` cannot go.** The corpus class the
+  README admitted it had never seen — `${}` in production SQL, values that could
+  carry a request — turned out to change the *advice*, not the detection. A
+  widely deployed admin framework has six `${}`: five are a data-scope aspect's
+  WHERE fragment (`${params.dataScope}` in the user, role and dept mappers) and
+  one is `<update id="createTable">${sql}</update>`, the code generator executing
+  the DDL it just built. Every one of them was told "改为预编译参数 `#{params}`" —
+  binding a Map, and broken SQL either way, since a bound parameter replaces a
+  value and never a clause. The rule now classifies what surrounds the
+  placeholder on its line (plus the line above, because SQL wraps) and answers
+  accordingly: `#{full.path}` for `= ${kw}`; an identifier whitelist for
+  `from ${table}`, `select ${id} as id`, `col_${suffix}`, `${key} = #{item}`,
+  `order by ${x}`; "this is OGNL, `#{}` cannot help" for
+  `<if test="'${value}' == 'x'">` and `<property value="${var}"/>`; and for a
+  whole injected fragment, that the control point is the server-side source.
+  Severities did not move — 591 findings on mybatis-3 became 590, not 590 fewer
+  gates.
+- **`#{ids[${index}]}` was reported as injection.** A `<foreach>` index choosing
+  *which parameter* to bind never reaches the SQL text. Found in MyBatis' own
+  test corpus; that is the one removed finding above.
+- **A `WHERE` that arrives by `<include>` was invisible.** RuoYi's
+  `SysConfigMapper.selectConfig` is `<include refid="selectConfigVo"/>` plus
+  `<include refid="sqlwhereSearch"/>`, and the second fragment is the `<where>`
+  block. Building the SQL text stripped tags to spaces, deleting the only
+  evidence that the statement was bounded, and MYB005 called a filtered query a
+  full-table read. `<where>`, `<set>` and `<trim prefix="WHERE">` now become the
+  keyword MyBatis emits, which also covers every MyBatis Generator mapper whose
+  conditions are `<include refid="Example_Where_Clause"/>`. Verified as a
+  behaviour change on exactly one finding across both corpora, none of them
+  added.
+- **`summary.units` counted files it had refused.** The same run printed
+  `skipped: pom.xml — not a MyBatis mapper XML` and then "295 file(s)
+  reviewed". It now reports what reached the rules: 286 for RuoYi, 1611 for
+  mybatis-3, with the refusals still named by path.
+
+### Tests
+
+136 → 153, all of them on shapes taken from the two corpora rather than invented.
+
 ## 0.1.12 — 2026-09-22
 
 ### Fixed

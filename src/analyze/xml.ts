@@ -66,9 +66,24 @@ function unwrapCdata(text: string): string {
   return text.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_all, inner: string) => inner);
 }
 
-/** Remove child tags but keep their text (MyBatis dynamic SQL is inline). */
+/**
+ * Remove child tags but keep their text (MyBatis dynamic SQL is inline) — except
+ * the tags that *emit a SQL keyword*, which are replaced by the word they put
+ * into the statement. `<where>` contributes `WHERE`, `<set>` contributes `SET`,
+ * `<trim prefix="WHERE">` contributes its prefix. Erasing them is what made a
+ * statement whose WHERE lives in an included `<sql>` fragment read as "no WHERE,
+ * full-table read" — the false positive came from stripping the evidence, not
+ * from the SQL.
+ */
 export function stripTags(text: string): string {
-  return text.replace(/<\/?[A-Za-z_][\w:.-]*(?:"[^"]*"|'[^']*'|[^"'>])*\/?>/g, " ");
+  return text
+    .replace(/<where\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, " where ")
+    .replace(/<set\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, " set ")
+    .replace(/<trim\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi, (_all, attrs: string) => {
+      const prefix = /\bprefix\s*=\s*["']([^"']+)["']/i.exec(attrs);
+      return prefix ? ` ${prefix[1]} ` : " ";
+    })
+    .replace(/<\/?[A-Za-z_][\w:.-]*(?:"[^"]*"|'[^']*'|[^"'>])*\/?>/g, " ");
 }
 
 /**
