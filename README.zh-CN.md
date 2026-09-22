@@ -141,7 +141,7 @@ CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install
 | SPR004 | 单例 Bean 里 `new Thread` / `Executors.newXxx` | error |
 | SPR005 | 实例字段被非同步方法写（`--experimental`） | warn |
 | SPR006 | `@Cacheable` 被自调用绕过，或者所有参数都进 key | warn |
-| MYB001 | `${}` 拼接，XML 与 `@Select` 都扫 | error |
+| MYB001 | `${}` 拼接：语句、`<sql>` 片段、`@Select` 都扫 | error |
 | MYB002 | N+1：循环或 stream 里调 mapper，`resultMap` 嵌套 select | error |
 | MYB003 | 左通配 `LIKE`，字面量 / `concat` / `<bind>` 三种形态 | warn |
 | MYB004 | `SELECT *` | warn |
@@ -154,6 +154,8 @@ CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install
 这些是框架契约，现在完全静默 —— 在生成代码上刷警告，只会让人把整套规则一起忽略掉。
 会报的是人写的那部分：`ORDER BY ${sortField}` 降为 warn 而不是 error，因为列名根本
 不能绑定，改成 `#{}` 是无效建议，真正能落地的答案是服务端维护列名白名单、命中不了就报错。
+写在共享 `<sql id="kwWhere">` 里、被五个语句 `<include>` 进去的占位，报在那块片段本身上，
+只报一次：要改的就是那一行，注入也在那里，语句正文里根本没有它。
 
 没有 `LIMIT` 的 `SELECT` 不一定是在读全表。MyBatis-Plus 的分页由拦截器注入，SQL 里
 始终是光秃秃的。所以这条规则会顺着 mapper XML 的 `namespace` 找到对应接口，参数里带
@@ -213,7 +215,7 @@ MyBatis Generator 自己生成的 `order by ${orderByClause}`，现在框架占�
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 116 个测试
+npm run typecheck && npm test    # 119 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

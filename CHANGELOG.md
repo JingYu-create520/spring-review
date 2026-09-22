@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.4 — 2026-09-22
+
+### Fixed
+
+- **`${}` inside a `<sql>` fragment was never reported.** MYB001 scanned statement
+  bodies, and an `<include refid="kwWhere"/>` leaves the fragment's text outside
+  every statement that uses it, so the ordinary shape of an injected search —
+  one `<if test="kw != null">and name = ${kw}</if>` shared by five statements —
+  produced nothing. `<sql>` fragments are scopes of their own now: one finding,
+  on the line that holds the placeholder, instead of one per `<include>`. A
+  mapper that consists only of fragments is no longer called inconclusive
+  either.
+- `<include refid="demo.OrderMapper.Cols"/>` resolves to the local `Cols` when
+  the namespace matches, which is how the qualified form is normally written. A
+  refid pointing into *another* file is still out of reach; that file is reviewed
+  on its own, and its `${}` is reported there.
+
 ## 0.1.3 — 2026-09-22
 
 ### Fixed

@@ -1,4 +1,4 @@
-import { resolveIncludes, stripTags } from "../analyze/xml.js";
+import { inlineFragments, resolveIncludes, stripTags } from "../analyze/xml.js";
 import type { JavaFile, MapperXml } from "../types.js";
 
 /**
@@ -9,7 +9,8 @@ import type { JavaFile, MapperXml } from "../types.js";
  * findings land on the right line.
  */
 export interface SqlScope {
-  kind: "select" | "insert" | "update" | "delete" | "other";
+  /** `sql` = a `<sql id="…">` fragment; text rules scan it, shape rules skip it. */
+  kind: "select" | "insert" | "update" | "delete" | "sql" | "other";
   id: string;
   raw: string;
   resolved: string;
@@ -24,7 +25,7 @@ export function lineAt(text: string, offset: number, base: number): number {
 }
 
 export function xmlScopes(xml: MapperXml): SqlScope[] {
-  return xml.statements.map((statement) => ({
+  const out: SqlScope[] = xml.statements.map((statement) => ({
     kind: statement.kind as SqlScope["kind"],
     id: statement.id,
     raw: statement.rawSql,
@@ -32,6 +33,21 @@ export function xmlScopes(xml: MapperXml): SqlScope[] {
     line: statement.line,
     source: "xml" as const,
   }));
+  // A `<sql>` fragment is SQL somebody wrote, and it sits outside every
+  // statement's line range, so scanning only statements hides whatever lives
+  // there. Reporting it on the fragment is also the right count: an `${}` in a
+  // shared `<if>` block is one finding, not one per `<include>`.
+  for (const [id, fragment] of Object.entries(xml.fragments)) {
+    out.push({
+      kind: "sql",
+      id,
+      raw: fragment.body,
+      resolved: inlineFragments(xml, fragment.body),
+      line: fragment.line,
+      source: "xml",
+    });
+  }
+  return out;
 }
 
 const ANNO = /@(Select|Update|Insert|Delete)\s*\(((?:"[^"]*"(?:\s*\+\s*"[^"]*")*\s*)|(?:[^()]*))\)/g;

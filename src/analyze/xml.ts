@@ -76,7 +76,7 @@ export function analyzeMapperXml(path: string, source: string): MapperXml {
   const lines = new LineIndex(source);
   const diagnostics: string[] = [];
   const statements: MapperStatement[] = [];
-  const fragments: Record<string, string> = {};
+  const fragments: Record<string, { body: string; line: number }> = {};
   const resultMaps: MapperXml["resultMaps"] = [];
   let namespace: string | undefined;
 
@@ -159,8 +159,9 @@ export function analyzeMapperXml(path: string, source: string): MapperXml {
       const close = /<\/\s*sql\s*>/i.exec(masked.slice(tag.end));
       if (close) {
         const id = tag.attrs["id"] ?? "";
-        if (id) fragments[id] = unwrapCdata(masked.slice(tag.end, tag.end + (close.index ?? 0)));
-        TAG.lastIndex = tag.end + (close.index ?? 0) + `</sql>`.length;
+        const bodyEnd = tag.end + (close.index ?? 0);
+        if (id) fragments[id] = { body: unwrapCdata(masked.slice(tag.end, bodyEnd)), line: lines.lineOf(start) };
+        TAG.lastIndex = bodyEnd + `</sql>`.length;
       }
       continue;
     }
@@ -168,7 +169,9 @@ export function analyzeMapperXml(path: string, source: string): MapperXml {
     if (stack.length > 200) break;
   }
 
-  if (statements.length === 0) diagnostics.push("no <select>/<insert>/<update>/<delete> found");
+  if (statements.length === 0 && Object.keys(fragments).length === 0) {
+    diagnostics.push("no <select>/<insert>/<update>/<delete> and no <sql> fragment found");
+  }
   return {
     path,
     source,
@@ -181,21 +184,41 @@ export function analyzeMapperXml(path: string, source: string): MapperXml {
   };
 }
 
+/**
+ * Find a `<sql>` fragment by refid. MyBatis accepts the namespace-qualified form
+ * for a fragment in the same file (`refid="demo.UserMapper.Cols"`), so that
+ * prefix is stripped before giving up. A refid pointing into *another* file is
+ * not resolvable here — that file is reviewed on its own, which is where its
+ * `${}` will be reported.
+ */
+function fragmentOf(xml: MapperXml, refid: string): { body: string; line: number } | undefined {
+  const id = refid.trim();
+  const direct = xml.fragments[id];
+  if (direct) return direct;
+  const prefix = xml.namespace ? `${xml.namespace}.` : undefined;
+  if (prefix && id.startsWith(prefix)) return xml.fragments[id.slice(prefix.length)];
+  return undefined;
+}
+
 /** Inline `<include refid="…"/>` fragments so keyword checks see the real SQL. */
-export function resolveIncludes(xml: MapperXml, statement: MapperStatement): string {
-  let text = statement.rawSql;
+export function inlineFragments(xml: MapperXml, rawText: string): string {
+  let text = rawText;
   for (let pass = 0; pass < 3; pass++) {
     const re = /<include[^>]*refid=["']([^"']+)["'][^>]*\/?>/gi;
     let replaced = false;
     text = text.replace(re, (_all, refid: string) => {
-      const body = xml.fragments[refid.trim()];
-      if (body === undefined) return " ";
+      const fragment = fragmentOf(xml, refid);
+      if (!fragment) return " ";
       replaced = true;
-      return ` ${unwrapCdata(body)} `;
+      return ` ${unwrapCdata(fragment.body)} `;
     });
     if (!replaced) break;
   }
   return stripTags(text).replace(/\s+/g, " ").trim();
+}
+
+export function resolveIncludes(xml: MapperXml, statement: MapperStatement): string {
+  return inlineFragments(xml, statement.rawSql);
 }
 
 /** Line number of the first match of `re` inside a statement's own range. */

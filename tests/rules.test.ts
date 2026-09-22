@@ -196,6 +196,55 @@ describe("MYB rules on the deliberately broken mapper", () => {
     expect(handWritten.filter((f) => f.rule === "MYB001").map((f) => f.severity)).toEqual(["warn"]);
   });
 
+  it("MYB001 reports an ${} that lives in a shared <sql> fragment", () => {
+    // The realistic shape of an injected search: one `<if>` block written once
+    // and `<include>`d by every statement in the file. Statements were the only
+    // thing scanned, and the placeholder is not inside any of them, so this
+    // reported nothing at all.
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="F">',
+      '  <sql id="kwWhere"><if test="kw != null">and name = ${kw}</if></sql>',
+      '  <select id="a" resultType="map">select id from t where 1=1 <include refid="kwWhere"/></select>',
+      '  <select id="b" resultType="map">select id from t where 1=1 <include refid="F.kwWhere"/></select>',
+      "</mapper>",
+    ].join("\n");
+    const hits = analyze(src).filter((f) => f.rule === "MYB001");
+    // Once, on the fragment — not once per `<include>`, which would put the
+    // finding on a line that says nothing about the injection.
+    expect(hits.map((h) => h.line)).toEqual([lineOf(src, "and name = ${kw}")]);
+    expect(hits[0]?.message).toContain("sql#kwWhere");
+  });
+
+  it("a mapper that is only <sql> fragments is reviewed, not called inconclusive", () => {
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="Only">',
+      '  <sql id="w">and name like \'%${kw}\'</sql>',
+      "</mapper>",
+    ].join("\n");
+    const result = reviewUnits([unit("OnlyFragments.xml", src)], rules, DEFAULTS);
+    expect(result.findings.map((f) => f.rule)).toContain("MYB001");
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("inlines a namespace-qualified <include> into the statement that uses it", () => {
+    // `<include refid="Ns.Cols"/>` is the same fragment as `Cols` in this file.
+    // Unresolved, the statement reads as `select from t` and MYB004 misses the
+    // `SELECT *` the author actually wrote.
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="N">',
+      '  <sql id="Cols">*</sql>',
+      '  <select id="s" resultType="map">select <include refid="N.Cols"/> from t where id = #{id}</select>',
+      "</mapper>",
+    ].join("\n");
+    expect(ruleLines(analyze(src), "MYB004")).toEqual([lineOf(src, '<select id="s"')]);
+  });
+
   it("ignores XML that is not a mapper, once rather than per rule", () => {
     const result = reviewUnits(
       [unit("pom.xml", '<?xml version="1.0"?><project><name>x</name><a>${prop}</a></project>')],

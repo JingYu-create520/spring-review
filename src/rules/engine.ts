@@ -39,7 +39,12 @@ export function reviewUnits(units: ReviewUnit[], rules: Rule[], options: ReviewO
         skipped.push({ path: unit.path, reason: "not a MyBatis mapper XML" });
         continue;
       }
-      if (xml.statements.length === 0) structuralIssues.push(xml.diagnostics.join(" "));
+      // A mapper that is all `<sql>` fragments is still reviewable: the fragments
+      // are scanned where they are written, so only call the file inconclusive
+      // when there is no SQL in it at all.
+      if (xml.statements.length === 0 && Object.keys(xml.fragments).length === 0) {
+        structuralIssues.push(xml.diagnostics.join(" "));
+      }
       // Metadata only: `IPage` parameters live in the interface, not the XML.
       if (unit.companion) companion = analyzeJava(unit.companion.path, unit.companion.content);
     }

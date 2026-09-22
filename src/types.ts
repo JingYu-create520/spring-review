@@ -175,8 +175,13 @@ export interface MapperXml {
   lines: string[];
   namespace?: string;
   statements: MapperStatement[];
-  /** `<sql id="...">` fragments, referenced by `<include refid="...">`. */
-  fragments: Record<string, string>;
+  /**
+   * `<sql id="...">` fragments, referenced by `<include refid="...">`. Stored
+   * with their own line because a fragment is reviewed in its own right: an
+   * `${}` inside a shared `<sql>` block is one finding on the block, not one per
+   * statement that includes it.
+   */
+  fragments: Record<string, { body: string; line: number }>;
   resultMaps: Array<{ id: string; line: number; nestedSelectLines: number[] }>;
   diagnostics: string[];
 }

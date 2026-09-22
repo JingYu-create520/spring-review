@@ -153,7 +153,7 @@ that read skills instead of speaking MCP.
 | SPR004 | `new Thread` / `Executors.newXxx` inside a singleton bean | error |
 | SPR005 | mutable instance state written from unguarded methods (`--experimental`) | warn |
 | SPR006 | `@Cacheable` bypassed by a self-call, or keyed by every argument | warn |
-| MYB001 | `${}` interpolation in mapper XML and `@Select` SQL | error |
+| MYB001 | `${}` interpolation: statements, `<sql>` fragments, `@Select` SQL | error |
 | MYB002 | N+1: mapper call in a loop or stream, or a `resultMap` nested select | error |
 | MYB003 | leading-wildcard `LIKE`, as a literal, via `concat`, or via `<bind>` | warn |
 | MYB004 | `SELECT *` | warn |
@@ -169,7 +169,10 @@ warning on generated code is how a rule set earns to be ignored wholesale. What
 does get reported is `${}` in code someone wrote: a dynamic `ORDER BY ${sortField}`
 drops to `warn` rather than `error`, because it cannot be turned into `#{}` —
 column names are not bindable — and the useful answer is a server-side whitelist
-that rejects anything unmapped.
+that rejects anything unmapped. A placeholder written once in a shared
+`<sql id="kwWhere">` block and `<include>`d by five statements is reported on the
+block, once. That is the line to change, and it is where the injection is; the
+statement bodies never contained it.
 
 `SELECT` with no `LIMIT` is not always a full-table read. Under MyBatis-Plus the
 interceptor adds pagination and the SQL stays bare, so the rule follows the mapper
@@ -240,7 +243,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 116 tests
+npm run typecheck && npm test    # 119 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 
