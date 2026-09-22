@@ -15,7 +15,19 @@ import { lineAt, scopesFor, type SqlScope } from "../sql.js";
  * dynamic ORDER BY / column name gets a whitelist suggestion rather than
  * "use #{}", which is not actionable there.
  */
-const FRAMEWORK_PLACEHOLDER = [/^ew\.\w+$/, /^criterion\.\w+$/, /^_parameter\.\w+$/];
+/**
+ * Placeholders the frameworks themselves emit. These are silent, not downgraded:
+ * scanning a real MyBatis Generator project produced 84 warnings for
+ * `order by ${orderByClause}` alone, and a rule that fires 84 times on generated
+ * code teaches people to ignore the whole tool.
+ */
+const FRAMEWORK_PLACEHOLDER = [
+  /^ew\.\w+$/, // MyBatis-Plus AbstractWrapper: customSqlSegment / sqlSegment / sqlFrom / sqlWhere
+  /^criterion\.\w+$/, // MyBatis Generator Example criteria
+  /^orderByClause$/, // MyBatis Generator sort clause
+  /^distinct$/, // MyBatis Generator SELECT DISTINCT flag
+  /^_parameter\.\w+$/,
+];
 
 const ORDERISH_FRAGMENT = /^(sort|order|dir|direction|column|field|table|by|asc|desc)/i;
 const ORDER_CONTEXT = /(order\s+by|group\s+by|\blimit\b|\boffset\b|\bset\b|from\s*$|select\s+[\w.,*\s]*$)/i;
@@ -48,16 +60,9 @@ const rule: Rule = {
         const context = scope.raw.slice(Math.max(0, offset - 60), offset + fragment.length + 20);
 
         if (FRAMEWORK_PLACEHOLDER.some((re) => re.test(fragment))) {
-          out.push(
-            draft(
-              rule,
-              unit,
-              line,
-              `\${${fragment}} 是 MyBatis-Plus / Generator 的框架占位,值来自 Wrapper 构造而非直接拼接;仍建议确认入参没有被原样塞进 Wrapper。`,
-              `\${${fragment}} is a framework placeholder (wrapper/criteria); check nothing user-controlled lands in it.`,
-              { severity: "warn" },
-            ),
-          );
+          // Framework contract, not app code. Silent on purpose — see the note on
+          // FRAMEWORK_PLACEHOLDER: 84 warnings on one generated project is how a
+          // rule set gets ignored wholesale.
           continue;
         }
 

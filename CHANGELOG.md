@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.2 — 2026-09-21
+
+Everything below was found by scanning three public repositories (195 + 24 + 638
+files) rather than the bundled demo.
+
+### Fixed
+
+- **MYB001 produced 84 findings on a MyBatis Generator project**, every one of them
+  generated `order by ${orderByClause}`. Framework placeholders (`${ew.*}`,
+  `${criterion.*}`, `${orderByClause}`, `${distinct}`) are now silent instead of
+  downgraded to `warn`: a rule that floods generated code gets the entire rule set
+  ignored. A hand-written `${sortField}` still reports, at `warn`.
+- **Non-mapper XML logged one skip per rule.** `pom.xml` and `logback-spring.xml`
+  now produce a single `not a MyBatis mapper XML` entry instead of four.
+
+### Notes
+
+- The same pass turned up a live bug in macrozheng/mall: `@Scheduled` on a private
+  method, which Spring does not invoke. Both READMEs now carry the real-code table.
+
 ## 0.1.1 — 2026-09-21
 
 Both defects below were found by running the tool over a real Spring gateway project rather than

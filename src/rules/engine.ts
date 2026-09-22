@@ -34,6 +34,11 @@ export function reviewUnits(units: ReviewUnit[], rules: Rule[], options: ReviewO
       structuralIssues.push(...java.diagnostics);
     } else if (unit.lang === "xml") {
       xml = analyzeMapperXml(unit.path, unit.content);
+      if (xml.diagnostics.some((d) => d.includes("not <mapper>"))) {
+        // pom.xml, logback-spring.xml, web.xml …: one line, not one per rule.
+        skipped.push({ path: unit.path, reason: "not a MyBatis mapper XML" });
+        continue;
+      }
       if (xml.statements.length === 0) structuralIssues.push(xml.diagnostics.join(" "));
       // Metadata only: `IPage` parameters live in the interface, not the XML.
       if (unit.companion) companion = analyzeJava(unit.companion.path, unit.companion.content);

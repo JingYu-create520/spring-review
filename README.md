@@ -144,11 +144,14 @@ that read skills instead of speaking MCP.
 Three of those are less obvious than they look, and they are the reason the rule set
 is small.
 
-`${}` cannot simply be reported everywhere. MyBatis-Plus passes whole WHERE clauses
-through `${ew.customSqlSegment}`, and a dynamic `ORDER BY ${sortField}` cannot be
-turned into `#{}` because column names are not bindable. Both drop to `warn` with an
-answer that is actually usable: map the allowed columns server-side and reject
-anything else.
+`${}` cannot simply be reported everywhere. MyBatis-Plus and MyBatis Generator put
+their own text through `${ew.customSqlSegment}`, `${criterion.condition}` and
+`order by ${orderByClause}`; those are framework contract and are silent, because
+warning on generated code is how a rule set earns to be ignored wholesale. What
+does get reported is `${}` in code someone wrote: a dynamic `ORDER BY ${sortField}`
+drops to `warn` rather than `error`, because it cannot be turned into `#{}` —
+column names are not bindable — and the useful answer is a server-side whitelist
+that rejects anything unmapped.
 
 `SELECT` with no `LIMIT` is not always a full-table read. Under MyBatis-Plus the
 interceptor adds pagination and the SQL stays bare, so the rule follows the mapper
@@ -177,21 +180,29 @@ that an unreachable endpoint yields the offline template rather than a failed bu
 ## Run against code that was not written for this tool
 
 The demo project is a fixture: on its own it only proves the rules fire when told
-to. Two real Spring gateway modules were scanned in whole-directory mode — 195
-Java files, nothing planted in them for this tool:
+to. So the rules were pointed at real repositories, in whole-directory mode, with
+nothing planted for them.
 
-| Module | Files | Findings | What they were |
+| Codebase | Files | Findings | What they were |
 |---|---|---|---|
-| gateway service | 107 | 0 | clean at `--min-severity info` |
-| multi-module gateway | 88 | 3 | queries inside polling loops in `*IT.java` — real per-iteration round trips, but intentional in a test |
+| two Spring gateway modules (no MyBatis) | 195 | 3 | queries inside polling loops in `*IT.java` — real per-iteration round trips, intentional in a test |
+| [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | one `SELECT *`, one unbounded select |
+| [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 `SELECT *`, 12 mapper calls inside batch loops, 1 unbounded select, 1 dead `@Scheduled` |
 
-That pass is also where this release's two fixes came from: a directory argument
-reported a clean run over zero files, and
+The mall run found a real bug: `@Scheduled(cron = …)` on a **private** method in
+`OrderTimeOutCancelTask`, which Spring will not invoke. That task does not run.
+
+That pass produced four fixes, each pinned by a test afterwards. The first version
+of MYB001 reported 84 findings on mall, all of them MyBatis Generator's own
+`order by ${orderByClause}`; framework placeholders are silent now, because a rule
+that fires 84 times on generated code gets the whole rule set ignored. Non-mapper
+XML (`pom.xml`, `logback-spring.xml`) logged a skip per rule instead of per file. A
+directory argument reported a clean run over zero files. And
 `repository.findByName(name).map(e -> repository.save(e))` was read as an N+1 even
-though the `Optional` runs once. Both are pinned by tests now.
+though the `Optional` runs once.
 
-What this does **not** yet prove: a codebase with MyBatis XML mappers. Neither
-module has one, so the `MYB*` rules on real code still rest on the fixture.
+What this still does not prove: a codebase where a `${}` placeholder carries user
+input. Every `${}` in the projects above was framework-generated.
 
 ## What it does not do
 

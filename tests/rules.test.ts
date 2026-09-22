@@ -34,6 +34,11 @@ function ruleLines(findings: Finding[], rule: string): number[] {
   return findings.filter((f) => f.rule === rule).map(lines).sort((a, b) => a - b);
 }
 
+/** Run the whole rule set over a throwaway mapper XML. */
+function analyze(src: string): Finding[] {
+  return run([unit("Scratch.xml", src)]);
+}
+
 function lineOf(source: string, needle: string): number {
   const at = source.split("\n").findIndex((l) => l.includes(needle));
   if (at < 0) throw new Error(`fixture line not found: ${needle}`);
@@ -159,12 +164,46 @@ describe("MYB rules on the deliberately broken mapper", () => {
     expect(hits.every((h) => h.suggestion?.includes("白名单"))).toBe(true);
   });
 
-  it("MYB001 treats the MyBatis-Plus wrapper fragment as framework usage", () => {
-    const wrapper = findings.find((f) => f.line === lineOf(badXmlSrc, "${ew.customSqlSegment}"));
-    expect(wrapper?.rule).toBe("MYB001");
-    expect(wrapper?.severity).toBe("warn");
-    // …and MYB005 must not additionally claim the statement is unbounded.
-    expect(ruleLines(findings, "MYB005")).not.toContain(lineOf(badXmlSrc, "<select id=\"byWrapper\""));
+  it("MYB001 stays silent on framework placeholders, loudly on app code", () => {
+    // Measured: one real MyBatis Generator project produced 84 warnings for
+    // `order by ${orderByClause}` before this was silenced. A rule that noisy
+    // gets the whole rule set ignored.
+    const wrapperLine = lineOf(badXmlSrc, "${ew.customSqlSegment}");
+    expect(findings.filter((f) => f.line === wrapperLine)).toEqual([]);
+    // …while the statement is still checked for the things that are app code:
+    expect(ruleLines(findings, "MYB005")).not.toContain(wrapperLine);
+
+    const generated = analyze([
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="G">',
+      '  <select id="list" resultType="map">select id from t',
+      '    <where><foreach collection="oredCriteria" item="c">${criterion.condition}</foreach></where>',
+      '    <if test="orderByClause != null">order by ${orderByClause}</if>',
+      "    limit 20",
+      "  </select>",
+      "</mapper>",
+    ].join("\n"));
+    expect(generated.filter((f) => f.rule === "MYB001")).toEqual([]);
+
+    const handWritten = analyze([
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="H">',
+      '  <select id="sorted" resultType="map">select id from t where a = 1 order by ${sortField} limit 20</select>',
+      "</mapper>",
+    ].join("\n"));
+    expect(handWritten.filter((f) => f.rule === "MYB001").map((f) => f.severity)).toEqual(["warn"]);
+  });
+
+  it("ignores XML that is not a mapper, once rather than per rule", () => {
+    const result = reviewUnits(
+      [unit("pom.xml", '<?xml version="1.0"?><project><name>x</name><a>${prop}</a></project>')],
+      rules,
+      { ...DEFAULTS, minSeverity: "info" },
+    );
+    expect(result.findings).toEqual([]);
+    expect(result.skipped.filter((s) => s.reason === "not a MyBatis mapper XML")).toHaveLength(1);
   });
 
   it("MYB003 catches the literal, the CONCAT and the <bind> forms", () => {

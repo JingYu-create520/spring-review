@@ -134,9 +134,11 @@ Action 内部从 npm 取 CLI，所以要等包发布才能用；在那之前，�
 
 有三条比看起来复杂，也正是规则数停在 11 的原因。
 
-`${}` 不能一律报 error。MyBatis-Plus 会把整个 WHERE 子句通过
-`${ew.customSqlSegment}` 传进来，而 `ORDER BY ${sortField}` 也改不成 `#{}`——列名不是
-可绑定的参数。这两种都降为 warn，并给出用得上的答案：服务端维护列名白名单，命中不了就报错。
+`${}` 不能一律报出来。MyBatis-Plus 和 MyBatis Generator 会把自己的文本塞进
+`${ew.customSqlSegment}`、`${criterion.condition}`、`order by ${orderByClause}`，
+这些是框架契约，现在完全静默 —— 在生成代码上刷警告，只会让人把整套规则一起忽略掉。
+会报的是人写的那部分：`ORDER BY ${sortField}` 降为 warn 而不是 error，因为列名根本
+不能绑定，改成 `#{}` 是无效建议，真正能落地的答案是服务端维护列名白名单、命中不了就报错。
 
 没有 `LIMIT` 的 `SELECT` 不一定是在读全表。MyBatis-Plus 的分页由拦截器注入，SQL 里
 始终是光秃秃的。所以这条规则会顺着 mapper XML 的 `namespace` 找到对应接口，参数里带
@@ -160,19 +162,26 @@ Action 内部从 npm 取 CLI，所以要等包发布才能用；在那之前，�
 ## 在不是为它写的代码上跑过
 
 demo-project 是自带样本的夹具，它只能证明"规则该触发的时候会触发"。真正的验证来自
-两个真实的 Spring 网关模块，195 个 Java 文件，里面没有任何为这个工具准备的样例：
+几个公开仓库，整目录扫描，里面没有任何为这个工具准备的东西：
 
-| 模块 | 文件数 | 发现 | 是什么 |
+| 代码库 | 文件数 | 发现 | 是什么 |
 |---|---|---|---|
-| 网关服务 | 107 | 0 | `--min-severity info` 下全部干净 |
-| 多模块网关 | 88 | 3 | 都在 `*IT.java` 的轮询循环里查库 —— 确实是逐次往返，但在测试里这是有意的 |
+| 两个 Spring 网关模块（不含 MyBatis） | 195 | 3 | 都在 `*IT.java` 的轮询循环里查库 —— 确实是逐次往返，但在测试里是有意的 |
+| [abel533/MyBatis-Spring-Boot](https://github.com/abel533/MyBatis-Spring-Boot) | 24 | 2 | 一个 `SELECT *`，一个无界查询 |
+| [macrozheng/mall](https://github.com/macrozheng/mall) | 638 | 29 | 15 个 `SELECT *`、12 个循环里逐条调 mapper、1 个无界查询、1 个失效的 `@Scheduled` |
 
-这一轮也产出了本次发布的两个修复：传目录时它会报"扫了 0 个文件、一切正常"；
+mall 这一轮扫出了一个真实 bug：`OrderTimeOutCancelTask` 里 `@Scheduled(cron = …)` 标在
+**private** 方法上，Spring 不会调用它 —— 那个超时订单取消任务根本没在跑。
+
+这一轮一共带来四个修复，每个都补了测试。MYB001 最初在 mall 上报了 84 条，全部是
+MyBatis Generator 自己生成的 `order by ${orderByClause}`，现在框架占位完全静默；
+非 mapper 的 XML（`pom.xml`、`logback-spring.xml`）原来每条规则记一次跳过，现在一个
+文件一次；传目录时它会报"扫了 0 个文件、一切正常"；
 `repository.findByName(name).map(e -> repository.save(e))` 被当成 N+1，而那个
-`Optional` 只会执行一次。两个都已经有测试钉住。
+`Optional` 只会执行一次。
 
-还**没**被真实代码验证过的：带 MyBatis XML mapper 的工程。这两个模块都没有 mapper，
-所以 `MYB*` 规则在真实代码上的表现仍然只靠夹具。
+还没被验证到的：`${}` 里真的带着用户输入的代码库。上面几个项目里的 `${}` 全部来自框架
+生成。
 
 ## 它做不到什么
 

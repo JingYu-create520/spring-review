@@ -158,14 +158,6 @@
       "hasFix": true
     },
     {
-      "rule": "MYB001",
-      "file": "xml/BadUserMapper.xml",
-      "line": 30,
-      "severity": "warn",
-      "hasEvidence": true,
-      "hasFix": false
-    },
-    {
       "rule": "MYB003",
       "file": "xml/BadUserMapper.xml",
       "line": 35,
