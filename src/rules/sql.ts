@@ -1,4 +1,4 @@
-import { inlineFragments, resolveIncludes, stripTags } from "../analyze/xml.js";
+import { inlineFragments, resolveIncludes, stripTags, unresolvedIncludes } from "../analyze/xml.js";
 import type { JavaFile, MapperXml } from "../types.js";
 
 /**
@@ -16,6 +16,12 @@ export interface SqlScope {
   resolved: string;
   line: number;
   source: "xml" | "annotation";
+  /**
+   * `<include refid="…">` this file could not resolve, which means part of the
+   * SQL is simply not in front of us. Statement-shape rules treat it as "cannot
+   * tell" instead of "absent".
+   */
+  unresolved?: string[];
 }
 
 export function lineAt(text: string, offset: number, base: number): number {
@@ -32,6 +38,7 @@ export function xmlScopes(xml: MapperXml): SqlScope[] {
     resolved: resolveIncludes(xml, statement),
     line: statement.line,
     source: "xml" as const,
+    unresolved: unresolvedIncludes(xml, statement.rawSql),
   }));
   // A `<sql>` fragment is SQL somebody wrote, and it sits outside every
   // statement's line range, so scanning only statements hides whatever lives
@@ -45,6 +52,7 @@ export function xmlScopes(xml: MapperXml): SqlScope[] {
       resolved: inlineFragments(xml, fragment.body),
       line: fragment.line,
       source: "xml",
+      unresolved: unresolvedIncludes(xml, fragment.body),
     });
   }
   return out;
@@ -86,6 +94,11 @@ export function scopesFor(ctx: { java?: JavaFile; xml?: MapperXml }): SqlScope[]
 
 /** Does this SQL restrict rows at all? Used by MYB005 to avoid bogus alerts. */
 export function hasBoundingClause(scope: SqlScope): boolean {
+  // Text that could not be read is not text that is absent: an
+  // `<include refid="other.Mapper.commonWhere">` from a file this review never
+  // opened resolves to nothing, and concluding "no WHERE, full-table read" from
+  // that is how a rule gets switched off.
+  if (scope.unresolved && scope.unresolved.length > 0) return true;
   const resolved = scope.resolved.toLowerCase();
   if (/\bwhere\b/.test(resolved)) return true;
   if (/\blimit\b|\boffset\b|\btop\s+\d/.test(resolved)) return true;

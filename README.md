@@ -181,7 +181,9 @@ statement bodies never contained it.
 interceptor adds pagination and the SQL stays bare, so the rule follows the mapper
 XML's `namespace` to its interface and exempts statements whose parameters take an
 `IPage`/`Page`. Without that step it would flag every paged query in a MyBatis-Plus
-codebase, which is most of them.
+codebase, which is most of them. Text this file cannot see counts as unknown rather
+than absent: an `<include refid="other.Mapper.commonWhere">` that resolves to nothing
+is where the condition may be hiding.
 
 A leading-wildcard `LIKE` almost never appears as `'%foo%'` in a mapper, because
 `#{}` cannot sit inside quotes. The real forms are `concat('%', #{kw}, '%')` and
@@ -246,7 +248,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 120 tests
+npm run typecheck && npm test    # 121 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

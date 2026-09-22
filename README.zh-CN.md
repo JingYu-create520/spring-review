@@ -162,7 +162,8 @@ CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install
 没有 `LIMIT` 的 `SELECT` 不一定是在读全表。MyBatis-Plus 的分页由拦截器注入，SQL 里
 始终是光秃秃的。所以这条规则会顺着 mapper XML 的 `namespace` 找到对应接口，参数里带
 `IPage`/`Page` 的语句直接豁免。少了这一步，一个 MyBatis-Plus 项目里的每个分页查询都会
-被误报，而那样的项目是绝大多数。
+被误报，而那样的项目是绝大多数。这个文件看不到的文本算未知，不算不存在：
+`<include refid="other.Mapper.commonWhere">` 解析不出来的时候，条件很可能就藏在那儿。
 
 左通配 `LIKE` 在真实 mapper 里几乎不会写成 `'%foo%'`，因为 `#{}` 不能放进引号。实际
 形态是 `concat('%', #{kw}, '%')` 和 `<bind value="'%' + kw + '%'/>`。只匹配字面量，
@@ -217,7 +218,7 @@ MyBatis Generator 自己生成的 `order by ${orderByClause}`，现在框架占�
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 120 个测试
+npm run typecheck && npm test    # 121 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

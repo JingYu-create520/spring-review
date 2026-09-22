@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.6 — 2026-09-22
+
+### Fixed
+
+- **MYB005 reported an unbounded `SELECT` whose WHERE lives in another file.**
+  `<include refid="demo.A.commonWhere"/>` points at a fragment this file cannot
+  see, the refid inlined to nothing, and the absence of `WHERE` became an
+  `error`-severity claim — a false positive on exactly the sharing pattern MyBatis
+  `<sql>` blocks exist for. An include that could not be resolved now means
+  "cannot tell", not "absent", and the statement is left alone.
+
+  ```xml
+  <select id="s">select id from t<include refid="demo.A.commonWhere"/></select>
+  ```
+
+  Before: `error MYB005 既没有 WHERE 条件也没有 LIMIT`. After: no finding, and a
+  fragment the file *can* resolve is still judged on what it actually says.
+
 ## 0.1.5 — 2026-09-22
 
 ### Fixed

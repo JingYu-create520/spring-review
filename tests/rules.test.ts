@@ -245,6 +245,33 @@ describe("MYB rules on the deliberately broken mapper", () => {
     expect(ruleLines(analyze(src), "MYB004")).toEqual([lineOf(src, '<select id="s"')]);
   });
 
+  it("does not claim a full-table read when the WHERE may live in another file", () => {
+    // `<include refid="demo.A.commonWhere"/>` cannot be resolved from this file.
+    // Inlining it as nothing used to produce an *error* telling the author their
+    // unbounded SELECT has no WHERE — a false positive on the exact shape
+    // MyBatis `<sql>` sharing exists for.
+    const opaque = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="demo.B">',
+      '  <select id="s" resultType="map">select id from t<include refid="demo.A.commonWhere"/></select>',
+      "</mapper>",
+    ].join("\n");
+    expect(ruleLines(analyze(opaque), "MYB005")).toEqual([]);
+
+    // A fragment this file *can* see is still judged on what it says: `and 1 = 1`
+    // is not a WHERE, so the unbounded read is still reported.
+    const visible = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="demo.B">',
+      '  <sql id="noise">and 1 = 1</sql>',
+      '  <select id="s" resultType="map">select id from t<include refid="noise"/></select>',
+      "</mapper>",
+    ].join("\n");
+    expect(ruleLines(analyze(visible), "MYB005")).toEqual([lineOf(visible, '<select id="s"')]);
+  });
+
   it("ignores XML that is not a mapper, once rather than per rule", () => {
     const result = reviewUnits(
       [unit("pom.xml", '<?xml version="1.0"?><project><name>x</name><a>${prop}</a></project>')],

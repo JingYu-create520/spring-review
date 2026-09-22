@@ -200,6 +200,16 @@ function fragmentOf(xml: MapperXml, refid: string): { body: string; line: number
   return undefined;
 }
 
+/** Refids a statement or fragment asks for that this file cannot supply. */
+export function unresolvedIncludes(xml: MapperXml, rawText: string): string[] {
+  const out: string[] = [];
+  for (const m of rawText.matchAll(/<include[^>]*refid=["']([^"']+)["'][^>]*\/?>/gi)) {
+    const refid = (m[1] ?? "").trim();
+    if (refid && !fragmentOf(xml, refid) && !out.includes(refid)) out.push(refid);
+  }
+  return out;
+}
+
 /** Inline `<include refid="…"/>` fragments so keyword checks see the real SQL. */
 export function inlineFragments(xml: MapperXml, rawText: string): string {
   let text = rawText;
