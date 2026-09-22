@@ -132,3 +132,34 @@ jobs:
           head: ${{ env.SR_DEMO_HEAD }}
           install-from: local
           fail-on-error: "false"
+
+  action-ref:
+    name: Keep @v0 pointing at main
+    # Both READMEs and pr-review.yml say `uses: JingYu-create520/spring-review@v0`,
+    # so a moved @v0 is the difference between documenting the current Action and
+    # documenting a stale one. Doing it here means nobody has to remember.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-test, action-self-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move the moving tag
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify refs/tags/v0 >/dev/null \
+             && [ "$(git rev-parse 'v0^{commit}')" = "$GITHUB_SHA" ]; then
+            echo "v0 already points at $GITHUB_SHA"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Annotated, so `git describe` and the tags list read like versions.
+          git tag -f -a v0 -m "v0 — moving ref for the GitHub Action" "$GITHUB_SHA"
+          git push -f origin refs/tags/v0
+          # release.yml triggers on `v*.*` only, so this cannot start a loop.
+          echo "v0 -> $GITHUB_SHA"

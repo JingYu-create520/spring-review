@@ -95,6 +95,9 @@ Action 默认从本仓库的 Release 下载已经构建好的 `spring-review.tgz
 CLI 钉在某个版本，`install-from: npm` 在包发布后切过去，`install-from: local` 用 job 里
 已经构建好的那份。CI 每次 push 会跑 github 和 local 两条。
 
+`@v0` 是个会动的 tag，CI 把它指着那些 job 全绿的 main 提交；想连 Action 本身一起钉住，
+就写 `@v0.1.3`。
+
 ### Code Scanning
 
 `--format sarif` 输出 SARIF 2.1.0，规则说明一起打包进去，于是发现会长期待在 Security

@@ -105,6 +105,9 @@ version. `install-from: npm` switches over once the package exists;
 `install-from: local` runs a build already present in the job. CI exercises the
 github and local paths on every push.
 
+`@v0` is a moving tag that CI keeps pointed at the `main` commit that passed
+those jobs; `@v0.1.3` freezes the Action itself as well.
+
 ### Code scanning
 
 `--format sarif` writes SARIF 2.1.0 with all rule descriptions embedded, so findings
