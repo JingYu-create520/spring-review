@@ -226,12 +226,14 @@ nothing planted for them.
 | [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 590 | every one of them inside the framework's own test mappers: `SELECT *`, unbounded selects, `${}` feature tests |
 | [newbee-ltd/newbee-mall](https://github.com/newbee-ltd/newbee-mall) | 98 | 4 | two leading-wildcard searches, and two goods-search conditions whose `#{}` sits inside quotes so it never binds |
 | [yangzongzhuan/RuoYi-Vue](https://github.com/yangzongzhuan/RuoYi-Vue) | 295 | 50 | six `${}` injections of raw text, 7 unbounded `selectXxxAll`, 17 mapper calls inside service loops, 19 leading-wildcard searches, one `SELECT *` |
+| [jeecgboot/JeecgBoot](https://github.com/jeecgboot/JeecgBoot) | 1099 | 243 | 128 mapper calls inside service loops, 55 `SELECT *`, 30 leading-wildcard searches, 26 `${}` on dynamic table/column names and injected filter fragments, and one `@Transactional` self-call that really does lose the transaction |
 
 `Files` counts every `.java` and `.xml` the run opened. The files it refused to
 analyze are named by path in that same run's `skipped:` block instead of being
 quietly passed over — 226 of mybatis-3's 1837 (site-documentation `<document>` XML,
-`pom.xml`, `<configuration>` files) and 9 of RuoYi's 295, which is why the reviewed
-count in `--format json` is 1611 and 286.
+`pom.xml`, `<configuration>` files), 9 of RuoYi's 295, and 43 of JeecgBoot's 1099
+(35 non-mapper XML plus the 8 generator templates above), which is why the reviewed
+count in `--format json` is 1611, 286 and 1056.
 
 The mall run found a real bug: `@Scheduled(cron = …)` on a **private** method in
 `OrderTimeOutCancelTask`, which Spring will not invoke. That task does not run.
@@ -276,11 +278,38 @@ read. `<where>`, `<set>` and `<trim prefix="WHERE">` now become the keyword
 MyBatis actually emits, which also fixes every MyBatis Generator mapper whose
 conditions arrive as `<include refid="Example_Where_Clause"/>`.
 
+JeecgBoot cost four more, and a bug that no corpus would have found. Its
+`SysDepartServiceImpl.deleteDepart()` calls `this.delete(id)` — which is
+`@Transactional(rollbackFor = Exception.class)` — from a method that is not, so the
+department delete and its child/relation cleanup run without the transaction the
+author annotated; SPR001 reports it on the line. Two of the four fixes were about
+what the tool reads rather than what it says: annotation arguments are captured from
+a copy of the file with string literals blanked out (that is how a `)` inside a
+`@Select` cannot close the annotation), and reading a rule's value out of that copy
+made `@Cacheable(key = "#code+':'+#key")` look like a `@Cacheable` with no key at
+all. And the repository ships the FreeMarker templates that *generate* its mappers,
+under `code-template/…/mapper/xml/`, with a `<mapper>` root — 52 findings had been
+sitting on template text, including `${r'$'}{key}`, whose only job is to write a
+literal `${key}` into a file somebody will generate later. Those files are now
+skipped by name, the same way a `<document>` of site documentation is.
+The fourth: `@Cacheable` with several parameters and no `key` stopped being a
+finding when every parameter is a plain value — `SimpleKey` of four `String`s *is*
+the intended cache identity, and a warning on correct code is how a rule gets
+muted. It still fires when an object joins the key.
+
+The bug no corpus finds is the one a corpus run never touches: run the tool from a
+module directory (`cd backend && spring-review`) instead of the repository root, and
+git still answers with root-relative paths. v0.1.13 joined those onto `backend/`,
+found no file, fell back to the patch text, and switched off every rule that needs
+the whole file — 0 findings, exit 0, over a real `@Transactional` self-call. A
+multi-module Maven tree is the normal shape for this tool's users, so that path is
+now the tested one.
+
 What is still not proven: a request parameter flowing straight into a `${}`.
 RuoYi's values come from an aspect and a generator, and telling those apart from a
 caller-controlled string needs the source of a value across files — which is
 [#5](https://github.com/JingYu-create520/spring-review/issues/5), not this rule.
-Every `${}` in all six corpora was reported; none of them is known to have carried
+Every `${}` in all seven corpora was reported; none of them is known to have carried
 a request parameter, and that distinction is not knowable from one file
 ([#5](https://github.com/JingYu-create520/spring-review/issues/5)).
 
@@ -310,7 +339,7 @@ looks at.
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 153 tests
+npm run typecheck && npm test    # 165 tests
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

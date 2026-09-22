@@ -198,11 +198,13 @@ demo-project 是自带样本的夹具，它只能证明"规则该触发的时候
 | [mybatis/mybatis-3](https://github.com/mybatis/mybatis-3) | 1837 | 590 | 全在框架自己的测试 mapper 里：`SELECT *`、无界查询、`${}` 特性测试 |
 | [newbee-ltd/newbee-mall](https://github.com/newbee-ltd/newbee-mall) | 98 | 4 | 两处左通配搜索，外加两处商品搜索的 `#{}` 被写在引号里、根本绑定不上 |
 | [yangzongzhuan/RuoYi-Vue](https://github.com/yangzongzhuan/RuoYi-Vue) | 295 | 50 | 6 处 `${}` 原样拼接、7 个无界的 `selectXxxAll`、17 个 service 循环里逐条调 mapper、19 处左通配搜索、1 个 `SELECT *` |
+| [jeecgboot/JeecgBoot](https://github.com/jeecgboot/JeecgBoot) | 1099 | 243 | 128 个 service 循环里逐条调 mapper、55 个 `SELECT *`、30 处左通配搜索、26 处 `${}` 拼动态表名/列名与过滤片段，外加一个真的会丢事务的 `@Transactional` 自调用 |
 
 "文件数"是这次运行打开的全部 `.java` 与 `.xml`。分析不了的文件不会静默过去，而是在同一
 份输出的 `skipped:` 里逐个点名 —— mybatis-3 的 1837 个里有 226 个（站点文档的
-`<document>` XML、`pom.xml`、`<configuration>` 文件），RuoYi 的 295 个里有 9 个，所以
-`--format json` 报的实际分析数是 1611 和 286。
+`<document>` XML、`pom.xml`、`<configuration>` 文件），RuoYi 的 295 个里有 9 个，
+JeecgBoot 的 1099 个里有 43 个（35 个非 mapper XML，加上下文说的 8 个生成模板），所以
+`--format json` 报的实际分析数是 1611、286 和 1056。
 
 mall 这一轮扫出了一个真实 bug：`OrderTimeOutCancelTask` 里 `@Scheduled(cron = …)` 标在
 **private** 方法上，Spring 不会调用它 —— 那个超时订单取消任务根本没在跑。
@@ -239,10 +241,29 @@ RuoYi 又带来两个修复，两个都不是"报没报"的问题，而是"说�
 顺带修好了所有条件写成 `<include refid="Example_Where_Clause"/>` 的 MyBatis Generator
 mapper。
 
+JeecgBoot 带来四个修复，外加一个语料扫不出来的 bug。它的
+`SysDepartServiceImpl.deleteDepart()` 调了 `this.delete(id)`，而 `delete(id)` 带着
+`@Transactional(rollbackFor = Exception.class)`、调用方自己没有事务 —— 于是删除部门
+连同子部门和关联关系的清理，并没有跑在作者标注的那个事务里，SPR001 就报在那一行上。
+四个修复里有两个关于"读到什么"而不是"说什么"：注解的参数是从一份把字符串字面量抹掉的
+副本里取的（这样才能避免 `@Select` 里的 `)` 提前闭合注解），而规则再去这份副本里取值，
+`@Cacheable(key = "#code+':'+#key")` 就成了"没写 key 的 @Cacheable"。另一个是它把
+生成 mapper 的 FreeMarker 模板一起放在仓库里（`code-template/…/mapper/xml/`，根元素
+还真是 `<mapper>`），于是 52 条发现落在模板文本上，其中 `${r'$'}{key}` 的作用仅仅是
+把字面的 `${key}` 写进将来生成的文件 —— 这类文件现在和站点文档的 `<document>` 一样，
+按名字跳过。第四个：`@Cacheable` 多参数没写 key，只有在参数里有对象时才算问题，
+四个 `String` 的 SimpleKey 正是想要的缓存标识，对正确代码报警会让规则被人整条关掉。
+
+还有一个 bug 是跑语料跑不出来的：从模块目录里执行（`cd backend && spring-review`）而
+不是仓库根目录时，git 返回的路径依然相对于仓库根。v0.1.13 把那个路径拼在 `backend/`
+上，于是找不到文件，退化成只读 patch 文本，所有需要整文件上下文的规则自动熄火 ——
+面对一个真实的 `@Transactional` 自调用，它报了 0 条发现、退出码 0。多模块 Maven 工程
+正是这个工具用户的常态，所以这条路现在被测试钉住了。
+
 仍然没被验证到的是：请求参数直接流进 `${}` 的那种代码。RuoYi 的值来自切面和生成器，
 而要把它们和调用方可控的字符串区分开，需要跨文件追一个值的来源 —— 那是
 [#5](https://github.com/JingYu-create520/spring-review/issues/5)，不是这条规则。
-六个语料里的每一处 `${}` 都被报了出来，但没有一处已知真的带着请求参数。
+七个语料里的每一处 `${}` 都被报了出来，但没有一处已知真的带着请求参数。
 
 ## 它做不到什么
 
@@ -265,7 +286,7 @@ mapper。
 
 ```bash
 npm ci
-npm run typecheck && npm test    # 153 个测试
+npm run typecheck && npm test    # 165 个测试
 npm run build                    # dist/cli.js, dist/index.js, dist/mcp/index.js
 ```
 

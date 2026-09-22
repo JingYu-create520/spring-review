@@ -148,6 +148,8 @@ export const STEREOTYPES = [
 /** Annotation readers need line numbers, so a LineIndex is threaded through. */
 interface Ctx {
   masked: string;
+  /** Comments blanked, string literals intact — the text an annotation argument is read from. */
+  commentMasked: string;
   lines: LineIndex;
 }
 
@@ -177,7 +179,7 @@ function collectTypes(ctx: Ctx): JavaType[] {
     found.push({
       name,
       kind,
-      annotations: readAnnotations(header, declStart, lines),
+      annotations: readAnnotations(header, declStart, lines, ctx.commentMasked),
       modifiers: readModifiers(header),
       declStart,
       bodyStart,
@@ -229,11 +231,21 @@ function readModifiers(header: string): string[] {
   return header.split(/[\s,]+/).filter((w) => MODIFIERS.has(w));
 }
 
-/** Balanced-paren annotation reader; `baseOffset` makes offsets file-absolute. */
+/**
+ * Balanced-paren annotation reader; `baseOffset` makes offsets file-absolute.
+ *
+ * Structure (where the argument list ends) is decided on the masked copy, so a
+ * `)` inside a string cannot close the annotation early. The argument *text* is
+ * then re-read from `argText` — the copy with string literals intact — because an
+ * argument that is a literal is the value rules need: reading
+ * `@Cacheable(key = "#code+':'+#key")` out of the masked copy yields `key =` and
+ * the rule concludes no key was given.
+ */
 export function readAnnotations(
   text: string,
   baseOffset: number,
   lines?: LineIndex,
+  argText?: string,
 ): JavaAnnotation[] {
   const out: JavaAnnotation[] = [];
   const re = /@([A-Za-z_$][\w$.]*)/g;
@@ -246,7 +258,7 @@ export function readAnnotations(
     if (text[after] === "(") {
       const close = matchBrace(text, after, "(", ")");
       if (close > 0) {
-        args = text.slice(after + 1, close).trim();
+        args = (argText ?? text).slice(baseOffset + after + 1, baseOffset + close).trim();
         re.lastIndex = close;
       }
     }
@@ -273,7 +285,7 @@ export function analyzeJava(path: string, source: string): JavaFile {
   const masked = maskJavaLiterals(source);
   const commentMasked = maskJavaLiterals(source, { keepStrings: true });
   const lines = new LineIndex(source);
-  const ctx: Ctx = { masked, lines };
+  const ctx: Ctx = { masked, commentMasked, lines };
   const diagnostics: string[] = [];
   const types = collectTypes(ctx);
   const members: JavaMember[] = [];
@@ -312,18 +324,18 @@ export function analyzeJava(path: string, source: string): JavaFile {
           diagnostics.push(`unbalanced '{' near line ${lines.lineOf(blockStart)}`);
           break;
         }
-        const member = parseMember(header, ti, type, close, blockStart, segStart, lines, false);
+        const member = parseMember(header, ti, type, close, blockStart, segStart, lines, false, commentMasked);
         if (member) members.push(member);
         else {
-          const field = parseField(header, segStart, lines);
+          const field = parseField(header, segStart, lines, commentMasked);
           if (field) fields.push(field);
         }
         i = close + 1;
       } else {
-        const member = parseMember(header, ti, type, -1, -1, segStart, lines, true);
+        const member = parseMember(header, ti, type, -1, -1, segStart, lines, true, commentMasked);
         if (member) members.push(member);
         else {
-          const field = parseField(header, segStart, lines);
+          const field = parseField(header, segStart, lines, commentMasked);
           if (field) fields.push(field);
         }
         i = j + 1;
@@ -356,12 +368,13 @@ function parseMember(
   segStart: number,
   lines: LineIndex,
   declarationOnly: boolean,
+  argText?: string,
 ): JavaMember | null {
   const header = rawHeader.trim().replace(/;+$/, "").trim();
   if (!header) return null;
   // A nested type declaration, not a member. Must not trip on `Exception.class`.
   if (/(?:^|[^\w$.])(?:class|interface|enum|record)\s+[A-Za-z_$]/.test(header)) return null;
-  const annotations = readAnnotations(header, segStart, lines);
+  const annotations = readAnnotations(header, segStart, lines, argText);
   const stripped = stripAnnotations(header);
   if (!stripped) return null;
 
@@ -415,10 +428,10 @@ function parseMember(
   return null;
 }
 
-function parseField(header: string, segStart: number, lines: LineIndex): JavaField | null {
+function parseField(header: string, segStart: number, lines: LineIndex, argText?: string): JavaField | null {
   const trimmed = header.trim().replace(/;+$/, "").trim();
   if (!trimmed) return null;
-  const annotations = readAnnotations(trimmed, segStart, lines);
+  const annotations = readAnnotations(trimmed, segStart, lines, argText);
   const stripped = stripAnnotations(trimmed);
   if (!stripped) return null;
   if (/^(package|import|extends|implements|assert)\b/.test(stripped)) return null;

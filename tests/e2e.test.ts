@@ -271,6 +271,56 @@ describe("reviewDiff against a real repository", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("reviews the same way from a subdirectory of the repository", async () => {
+    // git reports paths from the repository root even when invoked in a module
+    // directory, and the file reads joined them onto that module directory:
+    // `cd backend && spring-review` could not find `backend/src/…`, treated the
+    // unit as a patch fragment, and switched off every rule that needs the whole
+    // file. A Maven multi-module project is the normal shape for this tool's
+    // users, so the run exited 0 over a real @Transactional self-call.
+    const dir = await mkdtemp(join(tmpdir(), "sr-subdir-"));
+    try {
+      await git(["init", "-q", "-b", "main"], dir);
+      await git(["config", "user.email", "test@example.com"], dir);
+      await git(["config", "user.name", "test"], dir);
+      await mkdir(join(dir, "backend/src/main/java/demo"), { recursive: true });
+
+      const fillers = Array.from({ length: 40 }, (_x, i) => `    void filler${i}() {}`);
+      const source = (extra: string[]) =>
+        [
+          "package demo;",
+          "import org.springframework.transaction.annotation.Transactional;",
+          "public class Svc {",
+          ...fillers,
+          "    @Transactional public void run() {}",
+          ...extra,
+          "}",
+          "",
+        ].join("\n");
+      const file = "backend/src/main/java/demo/Svc.java";
+      await writeFile(join(dir, file), source([]));
+      await git(["add", "-A"], dir);
+      await git(["commit", "-q", "-m", "chore: baseline"], dir);
+      await writeFile(join(dir, file), source(["    void added() {", "        this.run();", "    }"]));
+
+      const fromRoot = await reviewDiff({ kind: "worktree" }, dir, OPTS);
+      const fromModule = await reviewDiff({ kind: "worktree" }, join(dir, "backend"), OPTS);
+      const deeper = await reviewDiff({ kind: "worktree" }, join(dir, "backend/src"), OPTS);
+
+      expect(fromRoot.findings.map((f) => f.rule)).toContain("SPR001");
+      expect(fromModule.findings.map((f) => f.rule)).toEqual(
+        fromRoot.findings.map((f) => f.rule),
+      );
+      expect(deeper.findings.map((f) => f.rule)).toEqual(fromRoot.findings.map((f) => f.rule));
+      // The evidence it is not reading a patch fragment any more: nothing here may
+      // say the file was unavailable.
+      expect(fromModule.skipped.filter((s) => s.reason.includes("patch fragment"))).toEqual([]);
+      expect(fromModule.findings[0]?.line).toBe(fromRoot.findings[0]?.line);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 afterAll(async () => {

@@ -85,14 +85,14 @@ public class BadUserService {
         return counter.size();
     }
 
-    /** SPR006 —— 多参数未指定 key;同时被自调用。 */
+    /** SPR006 —— 参数含查询对象且未指定 key;同时被自调用。 */
     @Cacheable(cacheNames = "user")
-    public User findUser(Long tenantId, Long userId) {
-        return userMapper.selectByKey(tenantId, userId);
+    public User findUser(Long tenantId, Map<String, Object> filter) {
+        return userMapper.selectByKey(tenantId, filter);
     }
 
-    public User lookup(Long tenantId, Long userId) {
-        return this.findUser(tenantId, userId);
+    public User lookup(Long tenantId, Map<String, Object> filter) {
+        return this.findUser(tenantId, filter);
     }
 
     /** MYB002 —— 循环里逐条查。 */

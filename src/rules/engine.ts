@@ -4,6 +4,9 @@ import { LineIndex } from "../util/text.js";
 import { SEVERITY_RANK, type Finding, type FindingDraft, type JavaFile, type MapperXml, type ReviewOptions, type ReviewResult, type ReviewUnit, type Rule } from "../types.js";
 import { collectSuppressions, isSuppressed } from "./suppression.js";
 
+/** FreeMarker directives — `<#if>`, `</#list>`, `<#assign …>`, `<#[[`. */
+const TEMPLATE_DIRECTIVE = /<#\[\[|<\/?#/;
+
 /**
  * Deterministic execution pipeline: analyse once per unit, run the applicable
  * rules, then normalise — fill snippets, drop lines the change did not touch,
@@ -45,6 +48,15 @@ export function reviewUnits(units: ReviewUnit[], rules: Rule[], options: ReviewO
         continue;
       }
       const root = rootElementOf(unit.content);
+      if (TEMPLATE_DIRECTIVE.test(unit.content)) {
+        // A code generator's template that *emits* a mapper is not a mapper.
+        // Jeecg ships these under src/main/resources/jeecg/code-template/… with a
+        // `<mapper>` root, so every rule fires on them: `${primaryKeyField}` inside
+        // a `<#if>` is FreeMarker text, and the `${r'$'}{key}` escape exists only to
+        // write a literal placeholder into the file somebody will generate.
+        skipped.push({ path: unit.path, reason: "FreeMarker template, not a mapper" });
+        continue;
+      }
       if (unit.complete && root && root !== "mapper") {
         // MyBatis' own site documentation is `<document>` XML whose `<source>`
         // blocks contain mapper examples. Reviewing prose is how a tool gets

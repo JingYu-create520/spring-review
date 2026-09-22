@@ -102,3 +102,18 @@ export async function isGitWorktree(cwd: string): Promise<boolean> {
   const out = await gitRaw(["rev-parse", "--is-inside-work-tree"], cwd);
   return (out ?? "").trim() === "true";
 }
+
+/**
+ * The directory every repository-relative path is relative to.
+ *
+ * `git status --porcelain` and `git diff` print paths from the top level even
+ * when invoked in a subdirectory, so a monorepo module (`cd backend &&
+ * spring-review`) cannot read its own changes from the directory it was started
+ * in: `join(cwd, "src/A.java")` points at `backend/backend/src/A.java`. This is
+ * the base the file reads use; git itself still runs wherever the user was.
+ */
+export async function repoRoot(cwd: string): Promise<string | undefined> {
+  const out = await gitRaw(["rev-parse", "--show-toplevel"], cwd);
+  const root = (out ?? "").trim();
+  return root === "" ? undefined : root;
+}

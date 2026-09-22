@@ -230,13 +230,25 @@ export async function unitsFromDiff(files: DiffFile[], opts: CollectOptions): Pr
  * line, and the content is read from disk like any other worktree unit. Only the
  * default working-tree mode asks for this — a range or a patch describes history,
  * and whatever happens to be untracked in a checkout is not part of it.
+ *
+ * `base` is the directory the reported paths are relative to — the repository
+ * root, because `git status` prints root-relative paths even from a subdirectory.
+ * A file git lists that cannot be read is reported, not dropped: an empty result
+ * has to be explainable.
  */
-export async function untrackedDiffFiles(cwd: string): Promise<DiffFile[]> {
+export async function untrackedDiffFiles(
+  cwd: string,
+  base = cwd,
+): Promise<{ files: DiffFile[]; skipped: Array<{ path: string; reason: string }> }> {
   const out: DiffFile[] = [];
+  const skipped: Array<{ path: string; reason: string }> = [];
   for (const path of await untrackedFiles(cwd)) {
     if (!isReviewable(path)) continue;
-    const raw = await readFile(join(cwd, ...path.split("/")), "utf8").catch(() => null);
-    if (raw === null) continue;
+    const raw = await readFile(join(base, ...path.split("/")), "utf8").catch(() => null);
+    if (raw === null) {
+      skipped.push({ path, reason: "untracked but not readable from here" });
+      continue;
+    }
     const lines = normalizeNewlines(raw).split("\n");
     // A trailing newline is not a line of code.
     if (lines[lines.length - 1] === "") lines.pop();
@@ -250,7 +262,7 @@ export async function untrackedDiffFiles(cwd: string): Promise<DiffFile[]> {
     lines.forEach((text, index) => file.addedLines.set(index + 1, text));
     out.push(file);
   }
-  return out;
+  return { files: out, skipped };
 }
 
 /** Whole-file mode (`--file`): every line is reportable. */

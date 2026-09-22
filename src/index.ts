@@ -1,4 +1,4 @@
-import { getDiff, type DiffSource } from "./diff/git.js";
+import { getDiff, repoRoot, type DiffSource } from "./diff/git.js";
 import { unitsFromDiff, unitFromFile, expandReviewInputs, untrackedDiffFiles } from "./diff/collect.js";
 import { attachCompanions, buildNamespaceIndex } from "./diff/companion.js";
 import { reviewUnits } from "./rules/engine.js";
@@ -37,19 +37,26 @@ export async function reviewDiff(
   if (error) {
     return { findings: [], units: 0, skipped: [{ path: "-", reason: error }], hitRules: [] };
   }
+  // git prints paths from the repository top level, so that is the directory the
+  // file reads have to be based on. Running `cd backend && spring-review` in a
+  // monorepo used to join `backend/src/A.java` onto `backend/` and find nothing:
+  // untracked files were dropped silently, and tracked ones fell back to patch
+  // reconstruction, which loses the whole-file context most rules need.
+  const base = (await repoRoot(cwd)) ?? cwd;
   // The working-tree mode means "review what I am working on", and a file that
   // has never been `git add`ed is exactly that. `git diff HEAD` cannot see it, so
   // without this a first run on a fresh class reported a clean pass.
-  const all =
-    source.kind === "worktree" ? [...files, ...(await untrackedDiffFiles(cwd))] : files;
+  const untracked =
+    source.kind === "worktree" ? await untrackedDiffFiles(cwd, base) : { files: [], skipped: [] };
+  const all = [...files, ...untracked.files];
   const { units, skipped } = await unitsFromDiff(all, {
-    cwd,
+    cwd: base,
     after,
     exclude: merged.exclude,
   });
-  await withCompanions(units, cwd);
+  await withCompanions(units, base);
   const result = reviewUnits(units, rules, merged);
-  return { ...result, skipped: [...skipped, ...result.skipped] };
+  return { ...result, skipped: [...untracked.skipped, ...skipped, ...result.skipped] };
 }
 
 /** Whole-file mode: every line is reportable. Paths may be files, directories or globs. */
@@ -70,7 +77,9 @@ export async function reviewPaths(
     }
     units.push(unit);
   }
-  await withCompanions(units, cwd);
+  // The walked paths are relative to where the user pointed; the companion index
+  // comes from `git ls-files`, which is relative to the repository root.
+  await withCompanions(units, (await repoRoot(cwd)) ?? cwd);
   const result = reviewUnits(units, rules, merged);
   return { ...result, skipped: [...skipped, ...result.skipped] };
 }

@@ -54,7 +54,7 @@ const SELECT_LIST = /\b(?:select|distinct)\b[\s\w.,*]*$/i;
 /** An object name in place of an identifier: `from ${table}`, `update ${t}`. */
 const OBJECT_BEFORE = /\b(?:from|join|into|update|table|index|sequence)\b[\s\w.,]*$/i;
 /** Somewhere a bound parameter really can go. `%` covers `like '%${kw}%'`. */
-const VALUE_BEFORE = /(['"%=<>!(,]|\b(?:like|in|and|or|set|values|limit|offset|when|then|else|using|having)\b\s*)$/i;
+const VALUE_BEFORE = /(['"%=<>!(,]|\b(?:like|in|set|values|limit|offset|when|then|else|using|having)\b\s*)$/i;
 /** `params.dataScope` binds; `list.size()` and `@Foo@bar("x")` do not. */
 const BINDABLE_PATH = /^[\w$]+(?:\.[\w$]+)*$/;
 
@@ -99,6 +99,12 @@ function positionOf(raw: string, offset: number, matched: string): Position {
   if (COMPARED_AFTER.test(after)) return "identifier";
   if (GLUED_BEFORE.test(nearBefore) || GLUED_AFTER.test(nearAfter)) return "identifier";
   if (OBJECT_BEFORE.test(before) || SELECT_LIST.test(before)) return "identifier";
+  // A select list continues over several lines: `select ${text} as "title",` then
+  // `${code} as "key",`. Anything between SELECT and FROM names a column, whatever
+  // line it wrapped onto. (`and`/`or` are deliberately absent from the value
+  // pattern: `and ${value}` in a real mapper is a whole condition being injected.)
+  const head = raw.slice(0, offset);
+  if (/\bselect\b/i.test(head) && !/\bfrom\b/i.test(head)) return "identifier";
   if (VALUE_BEFORE.test(before) || (prevTail !== "" && VALUE_BEFORE.test(prevTail))) return "value";
   // Nothing in the line says where this goes. Say what it is (raw text in SQL)
   // and give the position-neutral advice rather than guessing `#{}`.

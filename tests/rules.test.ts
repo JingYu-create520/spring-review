@@ -141,8 +141,8 @@ describe("SPR rules on the deliberately broken service", () => {
 
   it("SPR006 flags both the missing key and the bypassed cache", () => {
     const at = ruleLines(findings, "SPR006");
-    expect(at).toContain(annoOf(badSrc, "public User findUser(Long tenantId, Long userId)"));
-    expect(at).toContain(lineOf(badSrc, "this.findUser(tenantId, userId)"));
+    expect(at).toContain(annoOf(badSrc, "public User findUser(Long tenantId, Map<String, Object> filter)"));
+    expect(at).toContain(lineOf(badSrc, "this.findUser(tenantId, filter)"));
   });
 
   it("MYB002 flags mapper calls inside for and forEach", () => {
@@ -761,5 +761,184 @@ describe("MYB005 reads a WHERE that arrives through <include>", () => {
 
   it("counts a `<trim prefix=\"WHERE\">` as the keyword it emits", () => {
     expect(hits).not.toContain(lineOf(src, '<select id="trimmed"'));
+  });
+});
+
+describe("annotation arguments keep their string literals", () => {
+  // The parser reads structure off a copy with comments and strings blanked, so
+  // an annotation's *value* has to be re-read from the copy that keeps them:
+  // `key = "#code+':'+#key"` arriving as `key =` told SPR006 no key was given, on
+  // code that spells the key out. A real framework had two such methods.
+  it("lets a rule see a SpEL key written as a string literal", () => {
+    const src = [
+      "package demo;",
+      "import org.springframework.cache.annotation.Cacheable;",
+      "public class S {",
+      '    @Cacheable(value = "user",key = "#tenantId+\':\'+#userId", unless = "#result == null ")',
+      "    public String find(Long tenantId, Map<String, Object> filter) { return null; }",
+      "}",
+    ].join("\n");
+    const hits = run([unit("S.java", src)]).filter((f) => f.rule === "SPR006");
+    expect(hits).toEqual([]);
+  });
+});
+
+describe("SPR006's coarse-key branch needs a parameter that can be coarse", () => {
+  const cacheable = (params: string) =>
+    [
+      "package demo;",
+      "import org.springframework.cache.annotation.Cacheable;",
+      "public class S {",
+      '    @Cacheable(cacheNames = "user")',
+      `    public String find(${params}) { return null; }`,
+      "}",
+    ].join("\n");
+
+  it("stays silent when every parameter is a plain value", () => {
+    // SimpleKey over (Long, String) *is* the intended cache identity. Warning here
+    // is what mutes a rule: the framework's own methods are all of this shape.
+    expect(run([unit("S.java", cacheable("Long tenantId, String userId"))]).filter((f) => f.rule === "SPR006")).toEqual([]);
+    expect(run([unit("S.java", cacheable("String a, String b, String c, String d"))]).filter((f) => f.rule === "SPR006")).toEqual([]);
+  });
+
+  it("fires when an object parameter joins the key", () => {
+    const hits = run([unit("S.java", cacheable("Long tenantId, Map<String, Object> filter"))]).filter(
+      (f) => f.rule === "SPR006",
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.suggestion).toContain("#p0");
+  });
+});
+
+describe("MYB005 separates 'scans everything' from 'returns everything'", () => {
+  const mapper = (body: string) =>
+    [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="G">',
+      body,
+      "</mapper>",
+    ].join("\n");
+
+  it("reports a grouped scan as a scan, not as a full read, and at warn", () => {
+    // `select create_by from demo group by create_by` — a real framework's creator
+    // dropdown. One row per creator comes back; the whole table is still read.
+    const src = mapper(
+      '  <select id="getCreateByList" resultType="string">select create_by from demo group by create_by</select>',
+    );
+    const hits = analyze(src).filter((f) => f.rule === "MYB005");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.severity).toBe("warn");
+    expect(hits[0]?.message).toContain("分组");
+    expect(hits[0]?.message).not.toContain("返回全表数据");
+    expect(hits[0]?.suggestion).toContain("索引");
+  });
+
+  it("keeps the error for a select that really returns the table", () => {
+    const src = mapper('  <select id="findAll" resultType="map">select id from t order by id</select>');
+    const hits = analyze(src).filter((f) => f.rule === "MYB005");
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.severity).toBe("error");
+  });
+});
+
+describe("a code generator's template is not a mapper", () => {
+  // Jeecg ships the FreeMarker templates that *produce* mappers under
+  // src/main/resources/jeecg/code-template/…/mapper/xml/, with a `<mapper>` root.
+  // Every rule fired on them: `${primaryKeyField}` inside `<#if>` is template text,
+  // and `${r'$'}{key}` exists only to write a literal placeholder into the file
+  // somebody will generate later. Reviewing a template as SQL is the same mistake
+  // as reviewing MyBatis' own site documentation as SQL.
+  const template = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+    '<mapper namespace="${entityName}">',
+    '  <select id="queryWhere" resultType="map">select id from t where 1=1',
+    '    <#if key?lower_case?index_of("${primaryKeyField}")!=-1>',
+    '      and ${r"$"}{key} = ${r"#"}{value}',
+    '    </#if>',
+    '  </select>',
+    "</mapper>",
+  ].join("\n");
+
+  const result = reviewUnits([unit("MapperTpl.xml", template)], rules, { ...DEFAULTS });
+
+  it("is skipped by name, not reviewed", () => {
+    expect(result.findings).toEqual([]);
+    expect(result.skipped).toEqual([
+      { path: "MapperTpl.xml", reason: "FreeMarker template, not a mapper" },
+    ]);
+  });
+
+  it("does not count as a reviewed file", () => {
+    expect(result.units).toBe(0);
+  });
+
+  it("leaves a real mapper alone", () => {
+    const real =
+      '<?xml version="1.0"?><mapper namespace="R"><select id="s" resultType="map">select id from t where a = ${a}</select></mapper>';
+    const hits = analyze(real).filter((f) => f.rule === "MYB001");
+    expect(hits).toHaveLength(1);
+  });
+});
+
+describe("MYB001 reads a column list that wraps, and a condition that is not a value", () => {
+  const onlyWrapped = (body: string, needle: string): Finding => {
+    const src = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "x">',
+      '<mapper namespace="Wrap">',
+      body,
+      "</mapper>",
+    ].join("\n");
+    const hits = analyze(src).filter(
+      (f) => f.rule === "MYB001" && f.line === lineOf(src, needle),
+    );
+    expect(hits.length).toBe(1);
+    return hits[0]!;
+  };
+
+  it("calls the second item of a select list what it is", () => {
+    // `select ${text} as "title",` / `${code} as "key",` from a tree-query mapper.
+    // The first line reads as a column; the continuation used to read as a value
+    // because the only thing before it was a comma.
+    const hit = onlyWrapped(
+      [
+        '  <select id="queryTreeList" resultType="map">',
+        '    select ${text} as "title",',
+        '           ${code} as "key"',
+        "    from sys_tenant",
+        "  </select>",
+      ].join("\n"),
+      '${code} as "key"',
+    );
+    expect(hit.suggestion).toContain("白名单");
+    expect(hit.suggestion).not.toContain("改为预编译参数");
+  });
+
+  it("treats `and ${x}` as an injected condition, not a value", () => {
+    // Jeecg's `_tableFilterSql` map entry: the placeholder is the whole condition.
+    // `and` introduces a condition, so it cannot make what follows a value.
+    const hit = onlyWrapped(
+      [
+        '  <select id="filter" resultType="map">',
+        "    select id from t where del = 0",
+        "    <foreach collection=\"q.entrySet()\" item=\"value\" index=\"key\">",
+        "      and ${value}",
+        "    </foreach>",
+        "  </select>",
+      ].join("\n"),
+      "and ${value}",
+    );
+    expect(hit.message).toContain("一整段 SQL 片段");
+    expect(hit.suggestion).not.toContain("改为预编译参数");
+  });
+
+  it("still binds a value that merely follows a conjunction", () => {
+    const hit = onlyWrapped(
+      '  <select id="ok" resultType="map">select id from t where a = #{a} and b = ${b} limit 10</select>',
+      "${b}",
+    );
+    expect(hit.suggestion).toBe("改为预编译参数 #{b}。");
   });
 });

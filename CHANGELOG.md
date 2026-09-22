@@ -4,6 +4,72 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the version follows
 semantic versioning, and `0.x` means "the rule set may still move".
 
+## 0.1.14 — 2026-09-22
+
+### Fixed
+
+- **Running from a module directory reviewed nothing and exited 0.** git answers
+  with repository-root-relative paths wherever it is invoked from, so
+  `cd backend && spring-review` joined `backend/src/Svc.java` onto `backend/`,
+  found no such file, fell back to the patch text, and turned off every rule that
+  needs the whole file:
+
+  ```text
+  v0.1.13, from backend/:  0 findings — skipped: "SPR001: file not fully available (patch fragment)" ×9
+  v0.1.14, from backend/:  SPR001 backend/src/main/java/demo/Svc.java:46
+  ```
+
+  The same run from the repository root was correct, which is why no corpus caught
+  it: a multi-module Maven tree — the normal shape for this tool's users — was never
+  the directory the tool was started in. File reads are now based on
+  `git rev-parse --show-toplevel`, and an untracked file that still cannot be read
+  is named (`untracked but not readable from here`) instead of being dropped.
+- **A string literal inside an annotation argument was invisible to the rules.**
+  Annotation *structure* is read from a copy of the file with comments and string
+  literals blanked — that is what stops a `)` in a `@Select` from closing the
+  annotation early — but the *value* was read from that same copy, so
+  `@Cacheable(value = "user", key = "#code+':'+#key")` reached the rule as
+  `key =`, and SPR006 reported "no key specified" on code that spells the key out.
+  Structure still comes from the masked copy; the argument text is now re-read from
+  the copy that keeps literals.
+- **A code generator's template was reviewed as a mapper.** JeecgBoot ships the
+  FreeMarker templates that produce its mappers under
+  `code-template/…/mapper/xml/`, root element `<mapper>` and all. 52 findings across
+  8 files had been sitting on template text — `<#if key?lower_case?index_of("${primaryKeyField}")!=-1>`,
+  and `${r'$'}{key}`, whose entire purpose is to write a literal `${key}` into a file
+  somebody will generate later. Such files are now skipped by name, the way a
+  `<document>` of site documentation already was.
+- **MYB001 misread two positions that only a big real corpus shows.** A select list
+  that wraps (`select ${text} as "title",` / `${code} as "key",`) put the second
+  placeholder behind a comma and got "bind it" advice for a column name; and
+  `and ${value}` — a whole injected condition in Jeecg's `_tableFilterSql` — counted
+  as a value because `and` was in the value pattern. Anything between `select` and
+  `from` is now an identifier position, and `and`/`or` introduce conditions rather
+  than values.
+
+### Changed
+
+- **SPR006's "no cache key" branch needs a parameter that can be coarse.**
+  `@Cacheable` on four `String`s with no `key` is correct code: `SimpleKey` of those
+  four *is* the intended identity. Warning there is how a rule gets muted, so it now
+  fires only when a non-value type joins the key (`Map<String, Object> filter`, a
+  query object). The self-invocation branch is untouched, and it is the one that
+  found Jeecg's real cache bug.
+- **MYB005 separates "scans everything" from "returns everything".**
+  `select create_by from demo group by create_by` — a real framework's creator
+  dropdown — was reported as "no WHERE and no LIMIT, reads the whole table" at
+  `error`, which is wrong about what comes back (one row per group) and about the
+  fix (nobody paginates a distinct list). It is now a `warn` saying the scan is
+  whole and the grouping column wants an index. A select that really does return the
+  table keeps the `error`: RuoYi's seven `selectXxxAll` and mybatis-3's 223 findings
+  are byte-identical across this change.
+
+### Tests
+
+153 → 165. Measured against three corpora: JeecgBoot 295 → 243 findings (52 template
+false positives and 2 SPR006 ones removed, none added), mybatis-3 590 → 590, RuoYi
+50 → 50.
+
 ## 0.1.13 — 2026-09-22
 
 ### Fixed
