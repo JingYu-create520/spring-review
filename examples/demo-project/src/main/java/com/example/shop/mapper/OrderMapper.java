@@ -37,4 +37,8 @@ public interface OrderMapper {
 
     @Select("select count(1) from orders where remark like '%${keyword}%'")
     long countByRemark(@Param("keyword") String keyword);
+
+    /** 备注精确匹配，值由后台表单直传。 */
+    @Select("select id, user_id, total_amount from orders where remark = '${remark}' limit 20")
+    List<Order> byRemark(@Param("remark") String remark);
 }
